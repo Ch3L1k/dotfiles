@@ -1,0 +1,13 @@
+/.git/
+/dist/
+/tests-output/
+__pycache__/
+*.py[cod]
+*.log
+*.bak
+*.backup
+.env
+fish_variables
+fish_history
+tdata/
+node_modules/
