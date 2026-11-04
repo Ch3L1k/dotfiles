@@ -1,0 +1,18 @@
+id = "4el1k/record-controls"
+name = "Screen Recording"
+version = "1.0.0"
+plugin_api = 26
+author = "Ch3L1k"
+license = "MIT"
+icon = "video"
+description = "A compact recording panel for the official Noctalia screen recorder."
+dependencies = ["python", "noctalia", "systemctl", "xdg-open", "gpu-screen-recorder"]
+
+[[panel]]
+id = "main"
+entry = "panel.luau"
+width = 520
+height = 700
+placement = "attached"
+position = "top_right"
+keyboard_focus = "on_demand"

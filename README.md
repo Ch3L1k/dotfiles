@@ -1,8 +1,7 @@
-# 4EL1k's dotfiles
+# Ch3L1k's dotfiles
 
 My CachyOS + **Hyprland (Lua)** + **Noctalia v5** desktop configuration.
-A curated, sanitized snapshot, with appearance settings, shortcuts and small
-helpers. This is not a full home-directory or account backup.
+My appearance settings, shortcuts and helpers, saved here to restore my setup.
 
 [Русская инструкция](README.ru.md) · [Live ASCII wallpaper](https://github.com/Ch3L1k/creation-of-tux)
 
@@ -25,20 +24,11 @@ helpers. This is not a full home-directory or account backup.
 - **Optional autostart definitions:** Telegram, Discord and Steam; not selected
   by the installer unless requested explicitly.
 
-## Before applying
+## My setup
 
-This snapshot targets **Hyprland 0.56.2 with the Lua API** and **native Noctalia
-v5.4.0** on CachyOS. It is not a drop-in .conf setup for older Hyprland or the
-Quickshell-based Noctalia v4. App commands and monitor rules are personal
-preferences; adjust them for your machine.
-
-In `config/hypr/config/variables.lua`, the sample monitors are `DP-6` (external)
-and `eDP-1` (laptop). Workspaces 1–8 are assigned to the external screen and 9–10
-to the laptop. Review `monitors.lua`, `workspaces.lua` and Noctalia notification
-monitor settings **before reloading**. Noctalia's listed community plugins must
-be installed through its catalog; the small local overrides are included here.
-Existing warnings for disabled/unavailable widgets may need cleanup for a
-minimal setup. The snapshot does not bundle a modified Noctalia executable.
+CachyOS, Hyprland 0.56.2 (Lua API), native Noctalia v5.4.0.
+`DP-6` is my external display; `eDP-1` is the laptop screen.
+Workspaces 1–8 use the external display, and 9–10 use the laptop.
 
 ## Installation
 
@@ -85,9 +75,6 @@ Optional: btop, Yazi, pavucontrol, Firefox, Telegram Desktop, Discord, Steam,
 Pear Desktop, hyprpicker, swash, gpu-screen-recorder, UMU/GE-Proton and the
 ChatGPT/Codex desktop application.
 
-Dependencies differ by distribution. These dotfiles do not download or install
-those programs, fonts, third-party plugins or account profiles.
-
 ## Main shortcuts
 
 | Shortcut | Action |
@@ -117,7 +104,7 @@ Leave out that Lua module if you prefer Firefox's normal Alt shortcuts.
 
 Noctalia generates terminal, GTK, btop, Yazi and Fastfetch colors. The supplied
 palette files are a starting snapshot; generated colors change with the theme.
-Telegram/Vencord/Codex templates and helpers are supplied **without account data**.
+Telegram/Vencord/Codex templates and helpers are included.
 Their UI/theme activation may still be needed inside each installed application.
 The Codex helper writes only appearance preferences and does not restart the app.
 
@@ -132,18 +119,10 @@ gsettings set org.gnome.desktop.interface icon-theme Noctalia-Soft
 The included `zz-folder-icons.toml` hook updates them when Noctalia resolves a
 new palette. No systemd file watcher is needed.
 
-## Privacy and scope
-
-See [PUBLICATION.md](PUBLICATION.md). No cookies, API tokens, SSH keys, browser
-profiles, chats, Steam userdata, Telegram sessions or shell histories are included.
-Wallpaper files, precise location, disk UUIDs/mounts, bootloader configuration and
-old disabled background services are excluded. **Creation of Tux** has its own
-repository and installer; the earlier personal wallpaper service is not copied.
-
 ## Credits and licenses
 
 This is a collection with upstream components; see [LICENSE](LICENSE) for the
 per-component scope. CachyOS/Hyprland base configuration, Noctalia, community
 plugin authors and other original notices retain their authorship. Local plugin
 manifests and README files are preserved. Custom helpers and adjustments were
-developed with AI coding assistance for **4EL1k**.
+developed with AI coding assistance for **Ch3L1k**.

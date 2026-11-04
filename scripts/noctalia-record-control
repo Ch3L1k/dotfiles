@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Native Noctalia recording form bridge. All processes use argv, never shell input."""
+import datetime,json,os,shutil,subprocess,sys,time,tomllib
+from pathlib import Path
+HOME=Path.home()
+PREF=HOME/'.config/noctalia-record-controls.json'
+STATE=HOME/'.local/state/noctalia-record-controls/state.json'
+UNIT='noctalia-record-start.service'
+PLUGIN='noctalia/screen_recorder:service'
+FOLDER=HOME/'Videos/Recordings'
+DEFAULT={'source':'portal','quality':21,'fps':60,'resolution':'original','audio':'default_output','delay':3,'cursor':True}
+ALLOWED={'source':('portal','region','focused'),'quality':(28,21,16),'fps':(30,60,120),'resolution':('original','1920x1080','1280x720'),'audio':('none','default_output','default_input','both'),'delay':(0,3,5),'cursor':(True,False)}
+
+def call(*args,check=True):
+    result=subprocess.run(args,check=check,capture_output=True,text=True,timeout=12)
+    if check and result.stdout.strip().startswith('error:'):raise RuntimeError(result.stdout.strip())
+    return result
+
+def atomic(path,value):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2));temp.replace(path)
+
+def load(path,default):
+    try:return json.loads(path.read_text())
+    except (FileNotFoundError,ValueError):return default.copy()
+
+def validated(data):
+    result=DEFAULT.copy()
+    for key,allowed in ALLOWED.items():
+        value=data.get(key,result[key])
+        if type(value)!=type(result[key]) or value not in allowed:raise ValueError('Invalid setting '+key)
+        result[key]=value
+    return result
+
+def processes():
+    pids=[]
+    for process in Path('/proc').iterdir():
+        if not process.name.isdecimal():continue
+        try:
+            if process.stat().st_uid==os.getuid() and (process/'exe').resolve().name=='gpu-screen-recorder':pids.append(int(process.name))
+        except OSError:pass
+    return pids
+
+def inline(value):
+    if isinstance(value,dict):return '{'+', '.join(json.dumps(str(k),ensure_ascii=False)+' = '+inline(v) for k,v in value.items())+'}'
+    if isinstance(value,list):return '['+', '.join(map(inline,value))+']'
+    if isinstance(value,bool):return str(value).lower()
+    if isinstance(value,str):return json.dumps(value,ensure_ascii=False)
+    return str(value)
+
+def configure(prefs):
+    config=tomllib.loads(call('noctalia','config','export').stdout)
+    settings=config.get('plugin_settings',{})
+    before=json.dumps(settings,sort_keys=True)
+    recorder=settings.setdefault('noctalia/screen_recorder',{})
+    recorder.update({'video_source':prefs['source'],'frame_rate':prefs['fps'],'frame_rate_mode':'cfr',
+        'video_codec':'h264','video_encoder':'gpu','video_bitrate_mode':'qp','video_qp':prefs['quality'],
+        'resolution':prefs['resolution'],'audio_source':prefs['audio'],'audio_codec':'aac','audio_bitrate':192,
+        'directory':str(FOLDER),'filename_pattern':'recording_%Y%m%d_%H%M%S','show_cursor':prefs['cursor'],
+        'color_range':'limited','replay_enabled':False})
+    FOLDER.mkdir(parents=True,exist_ok=True)
+    if json.dumps(settings,sort_keys=True)!=before:
+        call('noctalia','msg','config-set','plugin_settings',inline(settings))
+        return True
+    return False
+
+def start(prefs):
+    if processes():raise RuntimeError('Запись уже идёт')
+    atomic(PREF,prefs)
+    atomic(STATE,{'started':time.time(),'phase':'pending'})
+    changed=configure(prefs)
+    # Let the official service finish reloading before a zero-delay capture.
+    time.sleep(max(prefs['delay'],.60 if changed else .35))
+    # The form has already closed; it cannot appear in the recording.
+    call('noctalia','msg','plugin',PLUGIN,'all','start',prefs['source'])
+    atomic(STATE,{'started':time.time(),'phase':'started'})
+
+def stop():
+    call('systemctl','--user','stop',UNIT,check=False)
+    call('noctalia','msg','plugin',PLUGIN,'all','stop')
+    call('noctalia','msg','plugin',PLUGIN,'all','replay-stop')
+    atomic(STATE,{'started':0,'phase':'stopped'})
+
+def get():
+    pids=processes()
+    pending=call('systemctl','--user','is-active','--quiet',UNIT,check=False).returncode==0
+    state=load(STATE,{})
+    files=sorted(FOLDER.glob('*.mp4'),key=lambda f:f.stat().st_mtime,reverse=True) if FOLDER.exists() else []
+    error=state.get('error','') if state.get('phase')=='failed' else ''
+    log=HOME/'.local/state/noctalia/screen_recorder/gpu-screen-recorder.log'
+    if not pids and not pending and state.get('phase')=='started' and time.time()-state.get('started',0)>6:
+        if log.exists() and log.stat().st_mtime>=state.get('started',0)-1:
+            tail=log.read_text(errors='replace')[-3000:]
+            if any(word in tail.lower() for word in ('error','failed','fatal')):error='Не удалось начать запись. Подробности доступны в журнале.'
+    return {'prefs':validated(load(PREF,DEFAULT)),'recording':bool(pids),'pending':pending,
+        'available':shutil.which('gpu-screen-recorder') is not None,'folder':str(FOLDER),
+        'last':str(files[0]) if files else '', 'error':error}
+
+if __name__=='__main__':
+    try:
+        action=sys.argv[1] if len(sys.argv)>1 else 'get'
+        if action=='get':print(json.dumps(get(),ensure_ascii=False))
+        elif action=='start':start(validated(json.loads(sys.argv[2])))
+        elif action=='stop':stop()
+        elif action=='save':atomic(PREF,validated(json.loads(sys.argv[2])))
+        elif action=='configure':configure(validated(json.loads(sys.argv[2])))
+        else:raise ValueError('Unknown action')
+    except Exception as error:
+        print(str(error),file=sys.stderr)
+        if action=='start':
+            atomic(STATE,{'started':time.time(),'phase':'failed','error':str(error)})
+            subprocess.run(['notify-send','-a','Запись экрана','-i','camera-video','Не удалось начать запись',str(error)],capture_output=True)
+        sys.exit(1)

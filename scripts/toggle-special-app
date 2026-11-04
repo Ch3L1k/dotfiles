@@ -1,0 +1,84 @@
+#!/usr/bin/python
+"""Show/hide an application in a named Hyprland special workspace."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+APPS = {
+    "btop": {
+        "classes": {"special-btop"},
+        "command": ["kitty", "--single-instance", "--instance-group", "desktop",
+                    "--class", "special-btop", "--title", "btop", "-e", "btop"],
+    },
+    "music": {
+        "classes": {"com.github.th-ch.youtube-music", "pear-desktop"},
+        "command": ["pear-desktop"],
+    },
+}
+
+
+def query(what):
+    return json.loads(subprocess.check_output(["hyprctl", what, "-j"]))
+
+
+def dispatch(code):
+    result = subprocess.run(["hyprctl", "eval", code], check=True,
+                            capture_output=True, text=True)
+    if result.stdout.strip() != "ok":
+        raise RuntimeError(result.stdout.strip() or result.stderr.strip())
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in APPS:
+        raise SystemExit("Usage: toggle-special-app btop|music")
+    name = sys.argv[1]
+    app = APPS[name]
+    workspace = "special:" + name
+    session = hashlib.sha256(os.environ["HYPRLAND_INSTANCE_SIGNATURE"].encode()).hexdigest()[:12]
+    lock_path = Path(os.environ["XDG_RUNTIME_DIR"]) / ("special-app-" + session + "-" + name + ".lock")
+    with lock_path.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return  # A first launch is still mapping; never spawn a duplicate.
+        monitor = next(m for m in query("monitors") if m["focused"])
+        toggle = "hl.dispatch(hl.dsp.workspace.toggle_special(" + json.dumps(name) + "))"
+        if monitor["specialWorkspace"]["name"] == workspace:
+            dispatch(toggle)
+            return
+
+        def windows():
+            return [w for w in query("clients") if w.get("class", "").lower() in app["classes"]]
+
+        existing = windows()
+        for window in existing:
+            if window["workspace"]["name"] != workspace:
+                dispatch("hl.dispatch(hl.dsp.window.move({workspace=" + json.dumps(workspace) +
+                         ", follow=false, window=" + json.dumps("address:" + window["address"]) + "}))")
+        dispatch(toggle)
+        if not existing:
+            state = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "cachyos-setup"
+            state.mkdir(parents=True, exist_ok=True)
+            with (state / "special-apps.log").open("ab") as log:
+                subprocess.Popen(["uwsm", "app", "--", *app["command"]],
+                                 stdout=log, stderr=log, start_new_session=True)
+            for _ in range(100):
+                if windows():
+                    return
+                time.sleep(0.15)
+            # An empty special workspace should not cover the user's desktop.
+            monitor = next(m for m in query("monitors") if m["focused"])
+            if monitor["specialWorkspace"]["name"] == workspace:
+                dispatch(toggle)
+            subprocess.run(["notify-send", "Не удалось открыть " + name,
+                            "Приложение не создало окно. Повтори сочетание клавиш."], check=False)
+            raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,36 @@
+/* Nautilus only; keep menus and dialogs readable. */
+window.nautilus-window {
+  --window-bg-color: transparent;
+  --view-bg-color: alpha(@view_bg_color, 0.76);
+  --sidebar-bg-color: alpha(@view_bg_color, 0.82);
+  --sidebar-backdrop-color: alpha(@view_bg_color, 0.82);
+  --headerbar-bg-color: alpha(@headerbar_bg_color, 0.88);
+  --headerbar-backdrop-color: alpha(@headerbar_bg_color, 0.88);
+  background-color: transparent;
+  backdrop-filter: blur(20px);
+}
+
+/* Paint the sidebar once, instead of stacking several translucent layers. */
+window.nautilus-window > contents,
+window.nautilus-window toastoverlay,
+window.nautilus-window overlay-split-view {
+  background-color: transparent;
+}
+/* Keep the main pane dense independently of the transparent sidebar. */
+window.nautilus-window overlay-split-view > .content-pane {
+  background-color: var(--view-bg-color);
+}
+window.nautilus-window overlay-split-view > .sidebar-pane {
+  background-color: alpha(@view_bg_color, 0.82);
+}
+window.nautilus-window .sidebar-pane toolbarview,
+window.nautilus-window .sidebar-pane headerbar,
+window.nautilus-window .sidebar-pane scrolledwindow,
+window.nautilus-window .sidebar-pane viewport,
+window.nautilus-window .sidebar-pane placessidebar,
+window.nautilus-window .sidebar-pane placessidebar list,
+window.nautilus-window .sidebar-pane .sidebar,
+window.nautilus-window .sidebar-pane .navigation-sidebar {
+  background-color: transparent;
+  background-image: none;
+}

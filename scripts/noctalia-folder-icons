@@ -1,0 +1,78 @@
+#!/usr/bin/python
+"""Refresh the existing rounded folders after Noctalia resolves its palette."""
+from pathlib import Path
+import fcntl
+import os
+import re
+import subprocess
+
+h = Path.home()
+state = h / '.local/state/noctalia-folder-icons'
+state.mkdir(parents=True, exist_ok=True)
+
+def run(*args):
+    return subprocess.check_output(args, text=True).strip()
+
+def update():
+    colors = (h / '.config/kitty/themes/noctalia.conf').read_text()
+    match = re.search(r'^active_border_color\s+(#[0-9a-fA-F]{6})', colors, re.M)
+    if not match:
+        raise RuntimeError('Noctalia accent is missing from the Kitty template')
+    accent = match.group(1).lower()
+    rgb = tuple(int(accent[i:i+2], 16) for i in (1, 3, 5))
+    def mix(other, amount):
+        return '#' + ''.join(f'{round(c*(1-amount)+o*amount):02x}' for c, o in zip(rgb, other))
+    palette = {
+        '#438de6': mix((0, 0, 0), .30),
+        '#62a0ea': mix((0, 0, 0), .08),
+        '#afd4ff': mix((255, 255, 255), .48),
+        '#c0d5ea': mix((255, 255, 255), .40),
+        '#a4caee': mix((255, 255, 255), .25),
+    }
+    source = Path('/usr/share/icons/Adwaita/scalable/places')
+    files = {}
+    pattern = re.compile('|'.join(map(re.escape, palette)), re.I)
+    for p in source.glob('*.svg'):
+        if p.name.startswith('folder') or p.name in ('user-home.svg', 'user-desktop.svg'):
+            files['scalable/places/' + p.name] = pattern.sub(lambda m: palette[m[0].lower()], p.read_text())
+    if not files:
+        raise RuntimeError('Adwaita folder source icons are missing')
+    files['index.theme'] = (
+        '[Icon Theme]\nName=Noctalia Soft\n'
+        'Comment=Soft GNOME folders matched to the Noctalia accent\n'
+        'Inherits=Adwaita,hicolor\nDirectories=scalable/places\n\n'
+        '[scalable/places]\nSize=64\nMinSize=16\nMaxSize=512\n'
+        'Type=Scalable\nContext=Places\n'
+    )
+    current = run('gsettings', 'get', 'org.gnome.desktop.interface', 'icon-theme').strip("'")
+    names = ('Noctalia-Soft', 'Noctalia-Soft-Refresh')
+    if current not in names:
+        print('Different icon theme selected; leaving it unchanged:', current)
+        return
+    icons = h / '.local/share/icons'
+    def matches(root):
+        return all((root / name).is_file() and (root / name).read_text() == data for name, data in files.items())
+    # Identical palette notifications must not cause another theme-change event.
+    if matches(icons / current):
+        print('Folder palette already synchronized:', accent)
+        return
+    target = names[1] if current == names[0] else names[0]
+    dest = icons / target
+    for name, data in files.items():
+        p = dest / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + '.tmp')
+        tmp.write_text(data)
+        os.replace(tmp, p)
+    (dest / 'README.txt').write_text(
+        'Folder SVGs originate from /usr/share/icons/Adwaita/scalable/places.\n'
+        'Only palette colors change; all other icons inherit Adwaita.\n'
+    )
+    subprocess.run(['gtk-update-icon-cache', '-f', '-t', str(dest)], check=True, stdout=subprocess.DEVNULL)
+    # A different theme name invalidates GTK's in-memory icon textures immediately.
+    subprocess.run(['gsettings', 'set', 'org.gnome.desktop.interface', 'icon-theme', target], check=True)
+    print('Soft folder palette synchronized:', accent, target)
+
+with (state / 'update.lock').open('w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    update()

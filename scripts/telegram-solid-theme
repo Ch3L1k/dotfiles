@@ -1,0 +1,169 @@
+#!/usr/bin/python
+"""Bundle Noctalia colors with distinct chat canvas and message surfaces."""
+from pathlib import Path
+import io
+import os
+import re
+import struct
+import subprocess
+import tomllib
+import zipfile
+import zlib
+
+
+def png_chunk(name, content):
+    return (struct.pack(">I", len(content)) + name + content +
+            struct.pack(">I", zlib.crc32(name + content) & 0xffffffff))
+
+
+def solid_png(hex_color):
+    rgb = bytes.fromhex(hex_color.lstrip("#"))
+    width = height = 256
+    pixels = (b"\x00" + rgb * width) * height
+    return (b"\x89PNG\r\n\x1a\n" +
+            png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+            png_chunk(b"IDAT", zlib.compress(pixels, 9)) +
+            png_chunk(b"IEND", b""))
+
+
+def atomic_write(path, data):
+    temporary = path.with_name(path.name + ".solid-tmp")
+    with temporary.open("wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def chat_background(hex_color):
+    """Pre-blur the wallpaper, keeping the actual Telegram surface opaque.
+
+    Native Telegram flattens alpha in chat backgrounds. Whole-window opacity
+    would also fade photos and text, so never use it for this effect.
+    """
+    home = Path.home()
+    config = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state"))
+    wallpaper = None
+    for path in (config / "noctalia/config.toml", state / "noctalia/settings.toml"):
+        try:
+            data = tomllib.loads(path.read_text()).get("wallpaper", {})
+            candidate = data.get("default", {}).get("path")
+            if candidate:
+                wallpaper = Path(os.path.expandvars(candidate)).expanduser()
+        except (OSError, ValueError):
+            pass
+    if wallpaper and wallpaper.is_file():
+        filters = (
+            "scale=1280:720:force_original_aspect_ratio=increase,"
+            "crop=1280:720,gblur=sigma=30:steps=2,"
+            f"drawbox=x=0:y=0:w=iw:h=ih:color=0x{hex_color[1:]}@0.80:t=fill,"
+            "format=rgb24"
+        )
+        try:
+            result = subprocess.run([
+                "ffmpeg", "-nostdin", "-v", "error", "-i", str(wallpaper),
+                "-vf", filters, "-frames:v", "1", "-f", "image2pipe",
+                "-c:v", "png", "-threads", "1", "pipe:1",
+            ], capture_output=True, check=True, timeout=15)
+            if result.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                return result.stdout
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return solid_png(hex_color)
+
+
+def contrast_palette(text):
+    """Use Noctalia semantic colors directly; do not invent a second palette."""
+    def role(name):
+        match = re.search(r"(?m)^[ \t]*// NOCTALIA_" + name +
+                          r":\s*(#[a-fA-F0-9]{6})\s*;", text)
+        if not match:
+            raise ValueError("Missing generated Noctalia role: " + name)
+        return match.group(1)
+
+    panel, canvas = role("PANEL"), role("CANVAS")
+    incoming, outgoing = role("INCOMING"), role("OUTGOING")
+    ink, out_ink, muted = role("INK"), role("OUT_INK"), role("MUTED")
+    accent, selected, selected_ink = role("ACCENT"), role("SELECTED"), role("SELECTED_INK")
+    dark = sum(v * w for v, w in zip(bytes.fromhex(canvas[1:]),
+                                    (.2126, .7152, .0722))) < 128
+    updates = {
+        "windowBg": panel, "windowBgOver": incoming,
+        "windowFg": ink, "windowFgOver": ink,
+        "windowSubTextFg": muted, "windowSubTextFgOver": muted,
+        "windowActiveTextFg": accent,
+        "boxBg": panel, "boxSearchBg": panel,
+        "contactsBg": panel, "contactsBgOver": incoming,
+        "menuBg": panel, "menuBgOver": incoming,
+        "mainMenuBg": panel, "topBarBg": panel,
+        "emojiPanBg": panel, "emojiPanCategories": panel,
+        "emojiPanHeaderBg": panel,
+        "shadowFg": "#00000020" if dark else "#00000018",
+        "windowShadowFg": "#00000024" if dark else "#00000018",
+        "windowShadowFgFallback": panel,
+        "titleShadow": "#00000000",
+        "boxDividerBg": panel, "boxDividerFg": "#00000000",
+        "menuSeparatorFg": role("OUTLINE") + "66",
+        "slideFadeOutBg": "#0000003c", "slideFadeOutShadowFg": "#00000018",
+        "dialogsBg": panel, "dialogsBgOver": incoming,
+        "dialogsBgActive": selected,
+        "dialogsNameFgActive": selected_ink, "dialogsTextFgActive": selected_ink,
+        "dialogsDateFgActive": selected_ink, "dialogsTextFgService": accent,
+        "historyComposeAreaBg": panel, "historyComposeButtonBg": panel,
+        "historyComposeButtonBgOver": incoming,
+        "historyLinkInFg": accent, "historyLinkOutFg": out_ink,
+        "historyOutIconFg": out_ink, "historySentIconFg": out_ink,
+        "historyUnreadBarBg": panel, "historyUnreadBarFg": muted,
+        "historyUnreadBarBorder": "#00000000",
+        "msgServiceBg": panel, "msgServiceFg": ink,
+        "msgInServiceFg": accent, "msgOutServiceFg": out_ink,
+        "titleBg": panel, "titleFg": ink, "titleFgActive": ink,
+        "msgInBg": incoming, "msgInBgSelected": selected,
+        "msgOutBg": outgoing, "msgOutBgSelected": selected,
+        "historyTextInFg": ink, "historyTextOutFg": out_ink,
+        "msgInDateFg": muted, "msgOutDateFg": out_ink,
+        "msgInShadow": "#00000020", "msgOutShadow": "#00000020",
+    }
+    for key, value in updates.items():
+        pattern = r"(?m)^(\s*" + re.escape(key) + r":\s*)[^;\n]+;"
+        if re.search(pattern, text):
+            text = re.sub(pattern, lambda m: m.group(1) + value + ";", text)
+        else:
+            text = text.rstrip() + "\n" + key + ": " + value + ";\n"
+    return text.encode("utf-8"), canvas, updates
+
+
+def main():
+    folder = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "telegram-desktop/themes"
+    theme = folder / "noctalia.tdesktop-theme"
+    original = theme.read_bytes()
+    if zipfile.is_zipfile(io.BytesIO(original)):
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            source = "noctalia-source.tdesktop-theme"
+            palette = archive.read(source if source in archive.namelist() else "colors.tdesktop-theme")
+    else:
+        palette = original
+    source_palette = palette
+    text = palette.decode("utf-8-sig")
+    palette, color, surfaces = contrast_palette(text)
+    background = chat_background(color)
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in [("colors.tdesktop-theme", palette), ("background.png", background),
+                           ("noctalia-source.tdesktop-theme", source_palette)]:
+            entry = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(entry, data)
+    packed = output.getvalue()
+    if packed != original:
+        atomic_write(theme, packed)
+    image = folder / "noctalia-background.png"
+    if not image.exists() or image.read_bytes() != background:
+        atomic_write(image, background)
+    print("Telegram chat colors:", color, "incoming:", surfaces["msgInBg"],
+          "outgoing:", surfaces["msgOutBg"])
+
+
+if __name__ == "__main__":
+    main()

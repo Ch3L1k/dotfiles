@@ -1,0 +1,45 @@
+#!/usr/bin/python
+"""Toggle only EN/RU, or select Ukrainian without adding it to the cycle."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in ("toggle", "ukrainian"):
+        raise SystemExit("Usage: switch-desktop-language toggle|ukrainian")
+    session = hashlib.sha256(os.environ["HYPRLAND_INSTANCE_SIGNATURE"].encode()).hexdigest()[:12]
+    folder = Path(os.environ["XDG_RUNTIME_DIR"]) / ("desktop-language-" + session)
+    folder.mkdir(mode=0o700, exist_ok=True)
+    with (folder / "lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        devices = json.loads(subprocess.check_output(["hyprctl", "devices", "-j"]))
+        keyboard = next(k for k in devices["keyboards"] if k["main"])
+        layouts = keyboard["layout"].split(",")
+        if not all(name in layouts for name in ("us", "ru", "ua")):
+            raise SystemExit("Hyprland must have us,ru,ua configured")
+        current = layouts[keyboard["active_layout_index"]]
+        saved = folder / "last-base"
+        previous = saved.read_text().strip() if saved.exists() else "us"
+        if previous not in ("us", "ru"):
+            previous = "us"
+        if sys.argv[1] == "ukrainian":
+            if current in ("us", "ru"):
+                saved.write_text(current)
+            target = "ua"
+        elif current == "ua":
+            target = previous
+        else:
+            target = "ru" if current == "us" else "us"
+        subprocess.run(["hyprctl", "switchxkblayout", "all", str(layouts.index(target))],
+                       check=True, stdout=subprocess.DEVNULL)
+        if target in ("us", "ru"):
+            saved.write_text(target)
+
+
+if __name__ == "__main__":
+    main()

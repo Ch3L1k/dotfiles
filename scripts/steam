@@ -1,0 +1,3 @@
+#!/bin/sh
+@HOME@/.local/bin/set-xwayland-primary
+exec /usr/bin/steam "$@"

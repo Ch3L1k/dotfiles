@@ -1,0 +1,87 @@
+#!/usr/bin/python
+"""Sync Noctalia's generated palette to Codex desktop appearance settings.
+
+The desktop app loads external settings at startup. This script never restarts it.
+"""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+import tomllib
+
+
+def set_values(text, table, values):
+    header = re.compile(r"(?m)^[ \t]*\[" + re.escape(table) + r"\][ \t]*(?:#.*)?$")
+    found = header.search(text)
+    if found is None:
+        return text.rstrip() + "\n\n[" + table + "]\n" + "".join(
+            f"{key} = {json.dumps(value)}\n" for key, value in values.items())
+    start = found.end()
+    next_table = re.search(r"(?m)^[ \t]*\[", text[start:])
+    end = start + next_table.start() if next_table else len(text)
+    section = text[start:end]
+    for key, value in values.items():
+        line = f"{key} = {json.dumps(value)}"
+        pattern = re.compile(r"(?m)^[ \t]*" + re.escape(key) + r"[ \t]*=.*$")
+        if pattern.search(section):
+            section = pattern.sub(lambda _: line, section)
+        else:
+            section = section.rstrip() + "\n" + line + "\n"
+    return text[:start] + section.rstrip() + "\n\n" + text[end:]
+
+
+def main():
+    home = Path.home()
+    cache = Path(os.environ.get("XDG_CACHE_HOME", home / ".cache")) / "noctalia"
+    palette = json.loads((cache / "codex-desktop-palette.json").read_text())
+    for key in ("surface", "ink", "accent", "secondary", "tertiary", "error"):
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", palette.get(key, "")):
+            raise ValueError("Invalid generated color: " + key)
+    rgb = bytes.fromhex(palette["surface"][1:])
+    dark = sum(v * w for v, w in zip(rgb, (.2126, .7152, .0722))) < 128
+    variant = "Dark" if dark else "Light"
+    table = "desktop.appearance" + variant + "ChromeTheme"
+    # Match Telegram's chat canvas instead of Material's almost-neutral surface.
+    tint = .11 if dark else .035
+    surface_rgb = bytes.fromhex(palette["surface"][1:])
+    accent_rgb = bytes.fromhex(palette["accent"][1:])
+    surface = "#" + bytes(round(a * (1 - tint) + b * tint)
+                           for a, b in zip(surface_rgb, accent_rgb)).hex()
+    target = Path(os.environ.get("CODEX_HOME", home / ".codex")) / "config.toml"
+    with (cache / "codex-desktop-theme.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for _ in range(3):
+            original = target.read_text()
+            output = set_values(original, "desktop", {"appearanceTheme": "dark" if dark else "light"})
+            output = set_values(output, table, {
+                "accent": palette["accent"], "accentSource": "custom",
+                "surface": surface, "ink": palette["ink"],
+            })
+            output = set_values(output, table + ".semanticColors", {
+                "diffAdded": palette["secondary"], "diffRemoved": palette["error"],
+                "skill": palette["tertiary"],
+            })
+            tomllib.loads(output)
+            if output == original:
+                print("Codex desktop palette already current")
+                return
+            with tempfile.NamedTemporaryFile(mode="w", dir=target.parent,
+                                             prefix=".noctalia-theme-", delete=False) as stream:
+                temporary = Path(stream.name)
+                os.chmod(temporary, target.stat().st_mode & 0o777)
+                stream.write(output)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if target.read_text() != original:
+                temporary.unlink()
+                continue
+            temporary.replace(target)
+            print("Codex desktop palette saved; app loads it on next start")
+            return
+        raise RuntimeError("Codex settings changed concurrently; retry on next palette update")
+
+
+if __name__ == "__main__":
+    main()

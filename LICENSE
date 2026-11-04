@@ -13,13 +13,13 @@ It does not relicense upstream components under a single blanket license.
 2. Local Noctalia plugin overrides
    Better Clock: yugaaank, license MIT as declared in plugin.toml.
    Special Workspaces: jamesfeeder, license MIT as declared in plugin.toml.
-   Screen Recording controls: Copyright (c) 2026 4EL1k, MIT.
+   Screen Recording controls: Copyright (c) 2026 Ch3L1k, MIT.
    Original manifests, readmes and in-file notices are retained.
    The MIT permission and disclaimer below apply to these MIT components,
    with their respective original authors retained.
 
 3. Original helper scripts, installer, documentation and original modifications
-   Copyright (c) 2026 4EL1k. MIT License, subject to the separate upstream
+   Copyright (c) 2026 Ch3L1k. MIT License, subject to the separate upstream
    licensing of any derived files described above.
 
 4. Generated palettes and app templates

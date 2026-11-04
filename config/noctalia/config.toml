@@ -1,0 +1,132 @@
+# Sanitized merged snapshot. Render @HOME@ with install.py.
+
+["accessibility"]
+"ui_scale" = 1.2
+
+["bar"]
+"default" = {"background_opacity" = 0.7999999821186066, "center" = ["polish_special", "workspaces"], "concave_edge_corners" = true, "end" = ["audio_visualizer", "keyboard_layout", "tray", "screen_recording", "notifications", "polish_audio", "session"], "margin_edge" = 0, "margin_ends" = 0, "radius_bottom_left" = 12, "radius_bottom_right" = 12, "radius_top_left" = 0, "radius_top_right" = 0, "scale" = 1.1, "start" = ["clock", "gamermode", "polish_stats", "cat", "media", "widget", "wallpaper"], "thickness" = 35, "capsule_group" = [{"border" = "", "fill" = "on_secondary", "id" = "g1", "members" = ["temp", "sysmon_2", "sysmon_3"], "opacity" = 1.0, "padding" = 6.0}], "capsule" = true, "capsule_opacity" = 0.8799999803304672, "contact_shadow" = true, "font_weight" = 600}
+
+["battery"]
+"warning_threshold" = 25
+
+["bluetooth"]
+"connect_when_enabled" = true
+
+["brightness"]
+"enable_ddcutil" = true
+
+["control_center"]
+"shortcuts" = [{"type" = "wifi"}, {"type" = "bluetooth"}, {"type" = "caffeine"}, {"type" = "nightlight"}, {"type" = "notification"}, {"type" = "power_profile"}, {"type" = "yocraft/qrcode:shortcut"}]
+"show_avatar_border" = false
+
+["desktop_widgets"]
+"schema_version" = 2
+"widget_order" = ["desktop-widget-0000000000000001"]
+"grid" = {"cell_size" = 16, "major_interval" = 4, "visible" = true}
+"widget" = {"desktop-widget-0000000000000001" = {"box_height" = 0.0, "box_width" = 0.0, "cx" = 144.0, "cy" = 975.199951171875, "output" = "DP-6", "placement_height" = 1080.0, "placement_width" = 1920.0, "rotation" = 0.0, "type" = "sysmon", "settings" = {"stat" = "cpu_usage", "stat2" = "cpu_temp"}}}
+
+["dock"]
+"active_monitor_only" = true
+"auto_hide" = true
+"enabled" = true
+"pinned" = ["discord", "org.telegram.desktop", "firefox", "com.github.th-ch.youtube-music", "chatgpt", "steam"]
+"reserve_space" = false
+"show_running" = false
+"smart_auto_hide" = false
+
+["lockscreen"]
+"blurred_desktop" = true
+
+["lockscreen_widgets"]
+"enabled" = false
+"schema_version" = 2
+"widget_order" = ["lockscreen-login-box@eDP-1", "lockscreen-login-box@DP-6"]
+"grid" = {"cell_size" = 16, "major_interval" = 4, "visible" = true}
+"widget" = {"lockscreen-login-box@DP-6" = {"box_height" = 196.0, "box_width" = 810.0, "cx" = 960.0, "cy" = 898.0, "output" = "DP-6", "placement_height" = 1080.0, "placement_width" = 1920.0, "rotation" = 0.0, "type" = "login_box", "settings" = {"background_color" = "surface_container", "background_opacity" = 0.88, "background_radius" = 12.0, "input_opacity" = 1.0, "input_radius" = 6.0, "layout" = "regular", "show_caps_lock" = true, "show_keyboard_layout" = true, "show_login_button" = true, "show_media" = true, "show_session_buttons" = true, "show_unlock_hint" = true, "show_weather" = true}}, "lockscreen-login-box@eDP-1" = {"box_height" = 196.0, "box_width" = 810.0, "cx" = 960.0, "cy" = 898.0, "output" = "eDP-1", "placement_height" = 1080.0, "placement_width" = 1920.0, "rotation" = 0.0, "type" = "login_box", "settings" = {"background_color" = "surface_container", "background_opacity" = 0.88, "background_radius" = 12.0, "input_opacity" = 1.0, "input_radius" = 6.0, "layout" = "regular", "show_caps_lock" = true, "show_keyboard_layout" = true, "show_login_button" = true, "show_media" = true, "show_session_buttons" = true, "show_unlock_hint" = true, "show_weather" = true}}}
+
+["notification"]
+"follow_focused_output" = false
+"layer" = "overlay"
+"monitors" = ["DP-6"]
+
+["osd"]
+"background_opacity" = 0.7999999821186066
+"monitors" = ["DP-6"]
+"offset_y" = 15
+"position" = "bottom_center"
+"kinds" = {"keyboard_layout" = false, "media" = false}
+
+["plugin_settings"]
+"noctalia/translator" = {"target_lang" = "ru", "provider" = "google"}
+"nomadcxx/gamer-mode" = {"poll_interval" = "5", "profile" = "light", "auto_performance" = false, "click_action" = "open_panel"}
+"al3x/visualizerp" = {"fps" = 24, "cols" = 48, "smoothing" = 0.6, "sensitivity" = 1.0, "gate" = 0.0025}
+"blackbartblues/audio-switcher" = {"show_percentage" = true, "refresh_interval_seconds" = 60, "panel_refresh_interval_seconds" = 5}
+"yugaaank/better-clock" = {"time_format" = "{:%H:%M}", "date_format" = "{:%d.%m.%Y}", "show_date" = true, "font_size" = 88, "date_font_size" = 18}
+"noctalia/wallpaper_depth" = {"auto_generate" = true, "manager_open_near_click" = true, "manager_placement" = "floating", "threshold" = 48}
+"noctalia/screen_recorder" = {"audio_bitrate" = 192, "audio_codec" = "aac", "audio_source" = "default_output", "color_range" = "limited", "directory" = "@HOME@/Videos/Recordings", "filename_pattern" = "recording_%Y%m%d_%H%M%S", "frame_rate" = 60, "frame_rate_mode" = "cfr", "replay_enabled" = false, "resolution" = "original", "show_cursor" = false, "video_bitrate_mode" = "qp", "video_codec" = "h264", "video_encoder" = "gpu", "video_qp" = 21, "video_source" = "focused"}
+"aabidk20/yt-music" = {"debug_logging" = true}
+
+["plugins"]
+"enabled" = ["blackbartblues/audio-switcher", "amirfarzamnia/autoclicker", "yugaaank/better-clock", "nomadcxx/gamer-mode", "yocraft/qrcode", "jamesfeeder/special-workspaces", "noctalia/translator", "dotnetrob/cat", "noctalia/screen_recorder", "4el1k/record-controls"]
+
+["shell"]
+"clipboard_image_action_command" = "swash --stdin --name \"swash-$(date +'%Y-%m-%d_%H:%M:%S').png\""
+"launch_apps_as_systemd_services" = true
+"polkit_agent" = true
+"settings_show_advanced" = true
+"greeter_sync" = {"auto_sync" = false}
+"panel" = {"open_near_click_control_center" = true, "session_placement" = "floating", "session_position" = "center", "launcher_placement" = "attached", "launcher_position" = "auto"}
+"screenshot" = {"copy_to_clipboard" = true, "pipe_command" = "swash --stdin --name \"swash-$(date +'%Y-%m-%d_%H:%M:%S').png\"", "pipe_to_command" = true, "save_to_file" = true, "copy_on_close" = true, "directory" = "@HOME@/Pictures/Screenshot"}
+"session" = {"actions" = [{"action" = "lock", "countdown_seconds" = 0.0, "enabled" = true, "shortcut" = "1", "variant" = "default"}, {"action" = "logout", "countdown_seconds" = 0.0, "enabled" = true, "shortcut" = "2", "variant" = "default"}, {"action" = "lock_and_suspend", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "3", "variant" = "default"}, {"action" = "suspend", "label" = "Сон", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "6", "variant" = "default"}, {"action" = "reboot", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "4", "variant" = "default"}, {"action" = "shutdown", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "5", "variant" = "destructive"}]}
+"corner_radius_scale" = 2.0
+"external_ip_enabled" = false
+"font_family" = "Inter"
+"screen_time_enabled" = true
+"settings_expand_all_groups" = true
+"settings_window_translucent" = true
+"show_location" = false
+"telemetry_enabled" = true
+"animation" = {"speed" = 0.7000000104308128}
+"launcher" = {"width" = 560}
+"screen_corners" = {"enabled" = true}
+
+["system"]
+"monitor" = {"gpu_poll_seconds" = 2}
+
+["theme"]
+"mode" = "dark"
+"source" = "wallpaper"
+"wallpaper_scheme" = "m3-rainbow"
+"templates" = {"builtin_ids" = ["alacritty", "btop", "gtk3", "gtk4", "hyprland", "kcolorscheme", "kitty", "qt"], "user" = {"telegram_solid" = {"input_path" = "$XDG_CONFIG_HOME/noctalia/templates/telegram.tdesktop-theme", "output_path" = "$XDG_CONFIG_HOME/telegram-desktop/themes/noctalia.tdesktop-theme", "index" = 100, "hook_async" = false, "post_hook" = "@HOME@/.local/bin/telegram-solid-theme"}, "discord_native" = {"input_path" = "$XDG_CONFIG_HOME/noctalia/templates/discord-native.css", "output_path" = "$XDG_CONFIG_HOME/Vencord/themes/noctalia-native.theme.css", "index" = 110}, "codex_desktop" = {"input_path" = "$XDG_CONFIG_HOME/noctalia/templates/codex-desktop.json", "output_path" = "$XDG_CACHE_HOME/noctalia/codex-desktop-palette.json", "index" = 120, "hook_async" = false, "post_hook" = "@HOME@/.local/bin/codex-desktop-theme"}}, "community_ids" = ["claude-code", "codex", "discord", "telegram", "vscode", "steam", "fastfetch", "obs", "yazi"]}
+"builtin" = "Noctalia"
+"community_palette" = "Oxocarbon"
+
+["widget"]
+"clock" = {"color" = "on_surface", "format" = "{:%H:%M}  ·  {:%d.%m}"}
+"launcher" = {"color" = "secondary"}
+"media" = {"min_length" = 21, "max_length" = 164, "hide_when_no_media" = true, "title_scroll" = "always", "actions" = {"left" = "exec @HOME@/.local/bin/toggle-special-app music", "right" = "panel-toggle control-center media"}, "rotate_album_art" = true, "show_progress" = true}
+"network" = {"color" = "secondary", "show_label" = false}
+"notifications" = {"color" = "secondary"}
+"session" = {"color" = "error"}
+"spacer_1" = {"type" = "spacer"}
+"temp" = {"show_value" = false}
+"sysmon_2" = {"glyph" = "gpu-usage", "show_value" = false, "stat" = "gpu_temp", "type" = "sysmon"}
+"sysmon_3" = {"glyph" = "cpu-2", "stat" = "ram_used", "type" = "sysmon"}
+"tray" = {"capsule" = true, "capsule_fill" = "surface_container"}
+"volume" = {"color" = "secondary"}
+"workspaces" = {"active_pill_size" = 2.5, "capsule" = true, "capsule_fill" = "surface_container", "inactive_pill_size" = 1.1500000000000001, "pill_scale" = 0.8, "show_labels" = true, "anchor" = true, "hide_when_empty" = true}
+"polish_bongo" = {"type" = "noctalia/bongocat:cat", "audio_spectrum" = true, "tappy_mode" = true, "rave_mode" = false, "use_mpris_filter" = false, "input_devices" = []}
+"polish_stats" = {"type" = "nomadcxx/gamer-mode:monitor", "capsule" = true, "capsule_fill" = "surface_container", "capsule_padding" = 8, "show_cpu" = true, "show_cpu_temp" = false, "show_ram" = true, "show_swap" = false, "show_gpu" = false, "show_gpu_temp" = false, "show_vram" = false, "show_load" = false, "show_net" = false, "show_glyphs" = true, "highlight_gamer_mode" = true, "flame" = "off", "actions" = {"left" = "panel-toggle nomadcxx/gamer-mode:main", "right" = "settings-open-plugin nomadcxx/gamer-mode"}}
+"polish_special" = {"type" = "jamesfeeder/special-workspaces:special-workspaces", "font_size" = 12, "max_label_chars" = 12, "capsule_radius" = 12, "capsule_padding" = 7, "capsule_min_width" = 35, "active_style" = "fill", "inactive_style" = "ghost", "active_color" = "primary", "active_text_color" = "on_primary", "inactive_color" = "surface_container", "inactive_text_color" = "on_surface_variant", "capsule" = false, "hide_inactive" = true, "scale" = 0.9500000000000001}
+"polish_scope" = {"type" = "al3x/visualizerp:scope", "width" = 96, "height" = 22, "line_width" = 1, "fill_opacity" = 0.06, "color" = "primary", "color2" = "on_surface_variant", "draw_band" = false, "show_meter_labels" = false}
+"polish_voice" = {"type" = "raycursive/discord-voice:bar", "hide_when_disconnected" = true, "show_channel_name" = true}
+"polish_audio" = {"type" = "blackbartblues/audio-switcher:widget", "actions" = {"right" = "exec pavucontrol", "middle" = "volume-mute"}}
+"polish_autoclicker" = {"type" = "amirfarzamnia/autoclicker:widget"}
+"screen_recording" = {"actions" = {"left" = "panel-toggle 4el1k/record-controls:main", "right" = "panel-toggle 4el1k/record-controls:main"}, "type" = "noctalia/screen_recorder:recorder"}
+"audio_visualizer" = {"show_when_idle" = true}
+"cat" = {"cat_size" = 31, "type" = "dotnetrob/cat:cat"}
+"gamermode" = {"type" = "nomadcxx/gamer-mode:gamermode"}
+"widget" = {"type" = "aabidk20/yt-music:widget"}
+
+["wallpaper"]
+"directory" = "@HOME@/Pictures/Wallpapers"

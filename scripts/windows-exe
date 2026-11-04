@@ -1,0 +1,86 @@
+#!/usr/bin/python
+"""Open a Windows executable in the shared desktop Proton environment."""
+from datetime import datetime
+import html
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+from urllib.parse import unquote, urlsplit
+
+
+def notify(title, body, critical=False):
+    try:
+        subprocess.run([
+            "notify-send", "--app-name=Windows Apps", "--icon=application-x-executable",
+            "--urgency=" + ("critical" if critical else "normal"),
+            "--expire-time=" + ("0" if critical else "2500"),
+            title, html.escape(body),
+        ], check=False)
+    except OSError:
+        pass
+
+
+def main():
+    if len(sys.argv) < 2:
+        notify("Приложения Windows", "Открой EXE или MSI двойным щелчком в файловом менеджере.")
+        return 0
+    value = sys.argv[1]
+    if value.startswith("file:"):
+        uri = urlsplit(value)
+        if uri.netloc not in ("", "localhost"):
+            raise ValueError("Поддерживаются только локальные файлы")
+        value = unquote(uri.path)
+    target = Path(value).expanduser().absolute()
+    if not target.is_file():
+        raise ValueError("Файл не найден: " + str(target))
+    suffix = target.suffix.lower()
+    if suffix not in (".exe", ".msi", ".lnk"):
+        raise ValueError("Выбери EXE, MSI или ярлык LNK")
+    if suffix == ".exe":
+        with target.open("rb") as stream:
+            if stream.read(2) != b"MZ":
+                raise ValueError("Этот файл не является Windows-программой")
+    home = Path.home()
+    data = home / ".local/share/windows-apps"
+    settings = json.loads((data / "runner.json").read_text())
+    proton, prefix = Path(settings["proton"]), Path(settings["prefix"])
+    if not (proton / "proton").is_file():
+        raise ValueError("Не найден установленный Proton: " + str(proton))
+    if not (prefix / "system.reg").exists():
+        raise ValueError("Окружение Windows ещё не подготовлено")
+    env = dict(os.environ)
+    env.update({
+        "WINEPREFIX": str(prefix), "PROTONPATH": str(proton), "GAMEID": "0",
+        "PROTON_VERB": "run", "WINEDEBUG": "-all", "PROTON_LOG": "0",
+    })
+    if suffix == ".msi":
+        command = ["msiexec", "/i", "Z:" + str(target).replace("/", "\\")]
+    elif suffix == ".lnk":
+        command = ["start.exe", "/unix", str(target)]
+    else:
+        command = [str(target)]
+    command += sys.argv[2:]
+    logs = home / ".local/state/windows-apps"
+    logs.mkdir(mode=0o700, parents=True, exist_ok=True)
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", target.stem)[:60] or "app"
+    log = logs / (datetime.now().strftime("%Y%m%d-%H%M%S-%f-") + name + ".log")
+    notify("Запуск Windows-приложения", target.name)
+    fd = os.open(log, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        process = subprocess.run(["/usr/bin/umu-run", *command], cwd=target.parent,
+                                 env=env, stdout=stream, stderr=subprocess.STDOUT)
+    if process.returncode:
+        notify("Ошибка запуска Windows-приложения",
+               f"{target.name}: код {process.returncode}. Журнал: {log}", critical=True)
+    return process.returncode
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, KeyError) as error:
+        notify("Ошибка запуска Windows-приложения", str(error), critical=True)
+        sys.exit(1)

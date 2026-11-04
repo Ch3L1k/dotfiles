@@ -1,0 +1,30 @@
+#!/usr/bin/python
+"""Select the user's main display before XWayland clients sample its refresh."""
+import json
+import subprocess
+
+
+def main():
+    monitors = json.loads(subprocess.check_output(
+        ["hyprctl", "monitors", "-j"], text=True, timeout=3))
+    active = [m for m in monitors if not m.get("disabled") and m.get("dpmsStatus", True)]
+    if not active:
+        return
+    target = max(active, key=lambda m: (
+        "MSI MP252" in m.get("description", ""),
+        not m["name"].startswith(("eDP-", "LVDS-")),
+        m.get("refreshRate", 0),
+    ))
+    result = subprocess.run(["xrandr", "--output", target["name"], "--primary"],
+                            text=True, capture_output=True, timeout=4)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        # An unavailable X server must never prevent Steam from starting.
+        import sys
+        print("XWayland primary display: " + str(error), file=sys.stderr)

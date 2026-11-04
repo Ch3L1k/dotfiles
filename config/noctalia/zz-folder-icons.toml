@@ -1,0 +1,3 @@
+# Run after Noctalia has generated the terminal palette.
+[hooks]
+colors_changed = "@HOME@/.local/bin/noctalia-folder-icons"
