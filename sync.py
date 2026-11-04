@@ -44,7 +44,7 @@ def clean(value, home):
     if isinstance(value, list):
         return [clean(item, home) for item in value]
     if isinstance(value, str):
-        return "" if value.startswith("/run/media/") else value.replace(str(home), "@HOME@").replace("4EL1k", "Ch3L1k")
+        return "" if value.startswith("/run/media/") else value.replace(str(home), "@HOME@").replace("4EL1k", "Ch3L1k").replace("4el1k/", "ch3l1k/")
     return value
 
 
@@ -104,7 +104,7 @@ def snapshot(repo, home):
         else:
             if source.stat().st_size > 2_000_000:
                 raise ValueError("Config unexpectedly exceeds 2 MB: " + name)
-            text = source.read_text().replace(str(home), "@HOME@").replace("4EL1k", "Ch3L1k")
+            text = source.read_text().replace(str(home), "@HOME@").replace("4EL1k", "Ch3L1k").replace("4el1k/", "ch3l1k/")
         if name == "config/hypr/config/autostart.lua":
             text = "\n".join(line for line in text.splitlines() if "xhost +SI:localuser:root" not in line) + "\n"
         if name == "scripts/steam":

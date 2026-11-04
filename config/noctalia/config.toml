@@ -59,7 +59,7 @@
 "polish_voice" = {"type" = "raycursive/discord-voice:bar", "hide_when_disconnected" = true, "show_channel_name" = true}
 "polish_audio" = {"type" = "blackbartblues/audio-switcher:widget", "actions" = {"right" = "exec pavucontrol", "middle" = "volume-mute"}}
 "polish_autoclicker" = {"type" = "amirfarzamnia/autoclicker:widget"}
-"screen_recording" = {"actions" = {"left" = "panel-toggle 4el1k/record-controls:main", "right" = "panel-toggle 4el1k/record-controls:main"}, "type" = "noctalia/screen_recorder:recorder"}
+"screen_recording" = {"actions" = {"left" = "panel-toggle ch3l1k/record-controls:main", "right" = "panel-toggle ch3l1k/record-controls:main"}, "type" = "noctalia/screen_recorder:recorder"}
 "audio_visualizer" = {"show_when_idle" = true}
 "cat" = {"cat_size" = 31, "type" = "dotnetrob/cat:cat"}
 "gamermode" = {"type" = "nomadcxx/gamer-mode:gamermode"}
@@ -126,7 +126,7 @@
 "kinds" = {"keyboard_layout" = false, "media" = false}
 
 ["plugins"]
-"enabled" = ["blackbartblues/audio-switcher", "amirfarzamnia/autoclicker", "yugaaank/better-clock", "nomadcxx/gamer-mode", "yocraft/qrcode", "jamesfeeder/special-workspaces", "noctalia/translator", "dotnetrob/cat", "noctalia/screen_recorder", "4el1k/record-controls"]
+"enabled" = ["blackbartblues/audio-switcher", "amirfarzamnia/autoclicker", "yugaaank/better-clock", "nomadcxx/gamer-mode", "yocraft/qrcode", "jamesfeeder/special-workspaces", "noctalia/translator", "dotnetrob/cat", "noctalia/screen_recorder", "ch3l1k/record-controls"]
 
 ["wallpaper"]
 "directory" = "@HOME@/Pictures/Wallpapers"
