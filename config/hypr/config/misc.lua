@@ -7,6 +7,7 @@ hl.config({
         no_donation_nag = true,
     },
     misc = {
+        focus_on_activate = true,
         col = {
             splash = CACHYLGREEN,
         },
