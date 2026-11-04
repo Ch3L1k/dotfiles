@@ -108,7 +108,7 @@ def snapshot(repo, home):
         if name == "config/hypr/config/autostart.lua":
             text = "\n".join(line for line in text.splitlines() if "xhost +SI:localuser:root" not in line) + "\n"
         if name == "scripts/steam":
-            text = re.sub(r"(?ms)^# Ember Linux integration\nif \[ -r .*?\nfi\n", "", text)
+            text = re.sub(r"(?ms)^# Ember (?:Linux integration|native Steam installer \(lumalinux\))\nif \[ -r .*?\nfi\n", "", text)
         if name == "config/fish/config.fish":
             line = "source /usr/share/cachyos-fish-config/cachyos-config.fish"
             text = text.replace(line, "if test -f /usr/share/cachyos-fish-config/cachyos-config.fish\n    " + line + "\nend")
