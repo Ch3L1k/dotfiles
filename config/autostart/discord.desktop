@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Exec=discord
+Hidden=false
+NoDisplay=false
+Name=Discord
+Icon=discord
+Comment=Text and voice chat for gamers.
+X-GNOME-Autostart-enabled=true

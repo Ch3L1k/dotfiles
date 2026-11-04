@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Telegram
+Exec=/usr/bin/Telegram
+TryExec=/usr/bin/Telegram
+Icon=org.telegram.desktop
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

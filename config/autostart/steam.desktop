@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Steam
+Exec=@HOME@/.local/bin/steam
+TryExec=@HOME@/.local/bin/steam
+Icon=steam
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
