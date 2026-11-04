@@ -1,0 +1,16 @@
+[Unit]
+Description=Back up changed desktop configuration to GitHub
+After=graphical-session.target
+ConditionPathIsDirectory=%h/Projects/dotfiles/.git
+StartLimitIntervalSec=1800
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/dotfiles
+ExecStart=/usr/bin/python3 %h/Projects/dotfiles/sync.py --push
+Restart=on-failure
+RestartSec=120
+TimeoutStartSec=300
+UMask=0077
+

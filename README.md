@@ -126,3 +126,11 @@ per-component scope. CachyOS/Hyprland base configuration, Noctalia, community
 plugin authors and other original notices retain their authorship. Local plugin
 manifests and README files are preserved. Custom helpers and adjustments were
 developed with AI coding assistance for **Ch3L1k**.
+
+## Automatic backups
+
+The installed user timer checks these desktop configs 90 seconds after login.
+Changed files are committed and pushed; unchanged snapshots create no commit.
+Run `python3 sync.py` to preview or `python3 sync.py --push` to sync manually.
+Disable with `systemctl --user disable --now dotfiles-sync.timer`.
+The timer definitions are in `systemd/`.

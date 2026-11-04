@@ -1,0 +1,9 @@
+[Unit]
+Description=Check desktop dotfiles after login
+
+[Timer]
+OnStartupSec=90
+Unit=dotfiles-sync.service
+
+[Install]
+WantedBy=timers.target
