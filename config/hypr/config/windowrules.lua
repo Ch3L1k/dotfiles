@@ -36,7 +36,7 @@ hl.window_rule({
 })
 hl.window_rule({
     match = {
-        class         = "^(steam_app.*)$",
+        class         = "^(steam_app_[0-9]+)$",
         initial_title = "^$",
     },
     center           = true,
@@ -47,6 +47,7 @@ hl.window_rule({
 })
 
 -- Apps
+hl.window_rule({ match = { class = "^(Tor Browser)$" }, float = true })
 hl.window_rule({ match = { class = "^(.*\\.exe)$", float = true }, monitor = PRIMARY_MONITOR, center = true, fullscreen_state = 0 })
 hl.window_rule({ match = { class = "^(.*[Ll]auncher.*)$" }, float = true, monitor = PRIMARY_MONITOR })
 hl.window_rule({ match = { class = "^(vesktop|discord)$" }, monitor = PRIMARY_MONITOR })
@@ -156,3 +157,6 @@ hl.layer_rule({
 
 -- Nautilus draws translucent surfaces; keep text and icons fully opaque.
 hl.window_rule({ match = { class = "^(org\\.gnome\\.Nautilus)$" }, opacity = "1.0 override" })
+
+-- Dedicated FL Studio window rules; keyboard bindings are unchanged.
+require("config.fl-studio-window")
