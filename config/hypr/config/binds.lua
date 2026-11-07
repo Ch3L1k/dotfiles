@@ -75,6 +75,9 @@ bind(mainMod .. " + SHIFT + M",
 bind(mainMod .. " + SHIFT + F6",
     hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/toggle-main-monitor --external-60"),
     "Только внешний экран 60 Гц / вернуть раскладку")
+bind(mainMod .. " + SHIFT + F7",
+    hl.dsp.exec_cmd("kitty --single-instance --title 'Экономия батареи' " .. os.getenv("HOME") .. "/.local/bin/battery-eco toggle"),
+    "Экономия батареи / восстановить производительность")
 app(mainMod .. " + S", "@HOME@/.local/bin/steam", "Steam")
 
 shell(mainMod .. " + Space", "panel-toggle launcher", "Запуск приложений")
