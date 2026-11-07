@@ -14,6 +14,7 @@ DISPLAY_MODE = require("config.display-mode")
 MONITOR1 = DISPLAY_MODE.external or MONITOR1
 MONITOR2 = DISPLAY_MODE.internal or MONITOR2
 LAPTOP_ONLY = DISPLAY_MODE.laptop_only == true
+EXTERNAL_ONLY = DISPLAY_MODE.external_only == true
 PRIMARY_MONITOR = LAPTOP_ONLY and MONITOR2 or MONITOR1
 
 -- Workspaces

@@ -1,9 +1,11 @@
 #!/usr/bin/python
 """Toggle the external display while preserving this Hyprland session's layout."""
 import argparse
+import copy
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -60,12 +62,18 @@ def laptop_mode():
     return mode_file.exists() and mode_file.read_text().startswith("-- laptop_only=true\n")
 
 
-def detect(monitors, snapshot=None):
+def external_mode():
+    return mode_file.exists() and "-- external_only=true\n" in mode_file.read_text()
+
+
+def detect(monitors, snapshot=None, allow_missing_external=False):
     internal = next((m for m in monitors if m["name"].startswith(("eDP-", "LVDS-"))), None)
     if not internal:
         raise RuntimeError("Экран ноутбука не найден; переключение отменено.")
     candidates = [m for m in monitors if m["name"] != internal["name"]]
     if not candidates:
+        if allow_missing_external and snapshot:
+            return {"name": snapshot["external"]}, internal
         raise RuntimeError("Внешний монитор не найден.")
     old_name = (snapshot or {}).get("external")
     external = max(
@@ -77,6 +85,44 @@ def detect(monitors, snapshot=None):
         ),
     )
     return external, internal
+
+
+def external_60_mode(monitor):
+    modes = []
+    for mode in monitor.get("availableModes", []):
+        match = re.fullmatch(r"(\d+)x(\d+)@([\d.]+)Hz", mode)
+        if match and int(match[1]) == monitor["width"] and int(match[2]) == monitor["height"]:
+            hz = float(match[3])
+            if abs(hz - 60) <= 0.5:
+                modes.append((abs(hz - 60), mode.removesuffix("Hz")))
+    if not modes:
+        raise RuntimeError("Внешний монитор не сообщает режим 60 Гц для текущего разрешения.")
+    return min(modes)[1]
+
+
+def build_state(target, snapshot, external, internal):
+    monitors = {
+        external["name"]: copy.deepcopy(snapshot["monitors"][snapshot["external"]]),
+        internal["name"]: copy.deepcopy(snapshot["monitors"][snapshot["internal"]]),
+    }
+    if target == "external":
+        monitors[external["name"]].update(mode=external_60_mode(external), position="0x0")
+    return {"laptop_only": target == "laptop", "external_only": target == "external",
+            "external": external["name"], "internal": internal["name"], "monitors": monitors}
+
+
+def runtime_visuals():
+    result = {}
+    for option in ["animations:enabled", "decoration:blur:enabled", "decoration:shadow:enabled",
+                   "decoration:active_opacity", "decoration:inactive_opacity"]:
+        data = query("getoption", option)
+        value = next(data[k] for k in ("bool", "float", "int") if k in data)
+        node = result
+        parts = option.split(":")
+        for name in parts[:-1]:
+            node = node.setdefault(name, {})
+        node[parts[-1]] = value
+    return result
 
 
 def monitor_settings(monitor):
@@ -94,7 +140,8 @@ def capture(external, internal):
         "internal": internal["name"],
         "monitors": {m["name"]: monitor_settings(m) for m in (external, internal)},
         "active": {
-            m["name"]: m["activeWorkspace"]["name"] for m in (external, internal)
+            m["name"]: m.get("activeWorkspace", {}).get("name") or ("9" if m is internal else "1")
+            for m in (external, internal)
         },
         "workspaces": [
             {"id": w["id"], "name": w["name"], "monitor": w["monitor"]}
@@ -112,26 +159,26 @@ def focus_workspace(name):
     evaluate("hl.dispatch(hl.dsp.focus({workspace=" + lua(workspace_selector(name)) + "}))")
 
 
-def apply(only_laptop, snapshot):
-    external, internal = detect(query("monitors", "all"), snapshot)
+def apply(target, snapshot):
+    available = query("monitors", "all")
+    external, internal = detect(available, snapshot, allow_missing_external=target != "external")
     external_name, internal_name = external["name"], internal["name"]
-    monitors = {
-        external_name: snapshot["monitors"][snapshot["external"]],
-        internal_name: snapshot["monitors"][snapshot["internal"]],
-    }
-    state = {
-        "laptop_only": only_laptop,
-        "external": external_name,
-        "internal": internal_name,
-        "monitors": monitors,
-    }
-    atomic_write(mode_file, "-- laptop_only=" + lua(only_laptop) + "\nreturn " + lua(state) + "\n")
-    command("hyprctl", "reload")
+    if target == "dual" and not any(m["name"] == external_name for m in available):
+        target = "laptop"
+    only_laptop = target == "laptop"
+    state = build_state(target, snapshot, external, internal)
+    visuals = runtime_visuals()
+    atomic_write(mode_file, "-- laptop_only=" + lua(only_laptop) +
+                 "\n-- external_only=" + lua(target == "external") + "\nreturn " + lua(state) + "\n")
+    try:
+        command("hyprctl", "reload")
+    finally:
+        evaluate("hl.config(" + lua(visuals) + ")")
     deadline = time.monotonic() + 6
     while time.monotonic() < deadline:
         active = {m["name"] for m in query("monitors") if not m.get("disabled")}
-        expected = {internal_name} if only_laptop else {internal_name, external_name}
-        if expected <= active and (not only_laptop or external_name not in active):
+        expected = {internal_name} if only_laptop else ({external_name} if target == "external" else {internal_name, external_name})
+        if active == expected:
             break
         time.sleep(0.1)
     else:
@@ -146,6 +193,8 @@ def apply(only_laptop, snapshot):
         old_monitor = previous.get(name)
         if only_laptop:
             destination = internal_name
+        elif target == "external":
+            destination = external_name
         elif old_monitor == snapshot["internal"] or (old_monitor is None and name in ("9", "10")):
             destination = internal_name
         else:
@@ -155,9 +204,9 @@ def apply(only_laptop, snapshot):
                          lua(workspace_selector(name)) + ",monitor=" + lua(destination) + "}))")
     if moves:
         evaluate(";".join(moves))
-    if only_laptop:
+    if target in ("laptop", "external"):
         focus_workspace(snapshot["focused_workspace"])
-        evaluate("hl.dispatch(hl.dsp.focus({monitor=" + lua(internal_name) + "}))")
+        evaluate("hl.dispatch(hl.dsp.focus({monitor=" + lua(internal_name if only_laptop else external_name) + "}))")
     else:
         focus_workspace(snapshot["active"][snapshot["internal"]])
         focus_workspace(snapshot["active"][snapshot["external"]])
@@ -165,6 +214,7 @@ def apply(only_laptop, snapshot):
     errors = command("hyprctl", "configerrors").strip()
     if errors:
         raise RuntimeError(errors)
+    return target
 
 
 def notify(text, error=False):
@@ -182,20 +232,33 @@ def main():
     group.add_argument("--laptop", action="store_true")
     group.add_argument("--restore", action="store_true")
     group.add_argument("--status", action="store_true")
+    group.add_argument("--external-60", action="store_true", help="Внешний экран 60 Гц / вернуть прежнюю раскладку")
+    group.add_argument("--recover-external", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.status:
-        print(json.dumps({"laptop_only": laptop_mode(), "monitors": [
+        print(json.dumps({"laptop_only": laptop_mode(), "external_only": external_mode(), "monitors": [
             {"name": m["name"], "focused": m["focused"], "refresh": m["refreshRate"]}
             for m in query("monitors")
         ]}))
         return
     with (directory / "lock").open("w") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Recovery is queued behind a transition, never discarded during hot-unplug.
+            fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.recover_external else fcntl.LOCK_NB))
         except BlockingIOError:
             return
-        target = args.laptop or (not args.restore and not laptop_mode())
-        if target and not laptop_mode():
+        if args.recover_external:
+            if not external_mode():
+                return
+            if any(not m["name"].startswith(("eDP-", "LVDS-")) and not m.get("disabled") for m in query("monitors")):
+                return
+            target = "laptop"
+        elif args.external_60:
+            target = "dual" if external_mode() else "external"
+        else:
+            target = "laptop" if args.laptop or (not args.restore and not laptop_mode()) else "dual"
+        single_mode = laptop_mode() or external_mode()
+        if target != "dual" and not single_mode:
             external, internal = detect(query("monitors", "all"))
             if external.get("disabled"):
                 raise RuntimeError("Нет активного внешнего монитора для сохранения раскладки.")
@@ -203,16 +266,16 @@ def main():
             atomic_write(snapshot_file, json.dumps(snapshot, indent=2))
         else:
             if not snapshot_file.exists():
-                if not target:
+                if target == "dual":
                     return
                 raise RuntimeError("Нет сохранённой раскладки.")
             snapshot = json.loads(snapshot_file.read_text())
         try:
-            apply(target, snapshot)
+            target = apply(target, snapshot)
         except Exception:
             # Always try to return both screens if a transition fails.
             try:
-                apply(False, snapshot)
+                apply("dual", snapshot)
             except Exception:
                 mode_file.unlink(missing_ok=True)
                 subprocess.run(["hyprctl", "reload"], capture_output=True, timeout=10)
@@ -223,8 +286,8 @@ def main():
                            capture_output=True, timeout=8, check=False)
         except (OSError, subprocess.TimeoutExpired):
             pass
-        notify("Только экран ноутбука" if target else "Внешний монитор снова основной")
-        print("laptop" if target else "dual")
+        notify({"laptop": "Только экран ноутбука", "external": "Только внешний экран, 60 Гц", "dual": "Прежняя раскладка мониторов восстановлена"}[target])
+        print(target)
 
 
 if __name__ == "__main__":

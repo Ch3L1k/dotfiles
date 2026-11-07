@@ -72,6 +72,9 @@ bind(mainMod .. " + CONTROL + Down", hl.dsp.focus({ monitor = MONITOR2 }), "Мо
 bind(mainMod .. " + SHIFT + M",
     hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/toggle-main-monitor"),
     "Внешний монитор / только экран ноутбука")
+bind(mainMod .. " + SHIFT + F6",
+    hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/toggle-main-monitor --external-60"),
+    "Только внешний экран 60 Гц / вернуть раскладку")
 app(mainMod .. " + S", "@HOME@/.local/bin/steam", "Steam")
 
 shell(mainMod .. " + Space", "panel-toggle launcher", "Запуск приложений")
