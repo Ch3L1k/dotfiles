@@ -92,7 +92,7 @@
 "schema_version" = 2
 "widget_order" = ["desktop-widget-0000000000000001"]
 "grid" = {"cell_size" = 16, "major_interval" = 4, "visible" = true}
-"widget" = {"desktop-widget-0000000000000001" = {"box_height" = 0.0, "box_width" = 0.0, "cx" = 144.0, "cy" = 975.199951171875, "output" = "DP-6", "placement_height" = 1080.0, "placement_width" = 1920.0, "rotation" = 0.0, "type" = "sysmon", "settings" = {"stat" = "cpu_usage", "stat2" = "cpu_temp"}}}
+"widget" = {"desktop-widget-0000000000000001" = {"box_height" = 0.0, "box_width" = 0.0, "cx" = 152.0, "cy" = 966.7999877929688, "output" = "DP-6", "placement_height" = 1080.0, "placement_width" = 1920.0, "rotation" = 0.0, "type" = "sysmon", "settings" = {"stat" = "cpu_usage", "stat2" = "cpu_temp"}}}
 
 ["dock"]
 "active_monitor_only" = true
