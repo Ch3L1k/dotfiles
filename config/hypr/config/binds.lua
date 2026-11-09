@@ -18,6 +18,7 @@ end
 app(mainMod .. " + Q", TERMINAL, "Терминал")
 app(mainMod .. " + SHIFT + Q", "cool-retro-term", "Ретро-терминал")
 app(mainMod .. " + B", BROWSER, "Браузер")
+app(mainMod .. " + SHIFT + B", "/usr/bin/python3 @HOME@/Documents/Codex/2026-11-07/weplace-live-google-chrome-firefox-chrome/outputs/start-firefox-friend.py", "Wplace — отдельный профиль Firefox")
 app(mainMod .. " + G", "chatgpt", "ChatGPT")
 app(mainMod .. " + E", FILE_MANAGER, "Файловый менеджер")
 app(mainMod .. " + SHIFT + E", TERMINAL .. " -e yazi", "Yazi")
@@ -78,6 +79,9 @@ bind(mainMod .. " + SHIFT + F6",
 bind(mainMod .. " + SHIFT + F7",
     hl.dsp.exec_cmd("kitty --single-instance --title 'Экономия батареи' " .. os.getenv("HOME") .. "/.local/bin/battery-eco toggle"),
     "Экономия батареи / восстановить производительность")
+bind(mainMod .. " + Z",
+    hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/obs-camera-blur toggle"),
+    "Вебкамера: сильное размытие / обычное изображение")
 app(mainMod .. " + S", "@HOME@/.local/bin/steam", "Steam")
 
 shell(mainMod .. " + Space", "panel-toggle launcher", "Запуск приложений")
