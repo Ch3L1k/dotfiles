@@ -17,7 +17,7 @@ hl.config({
         vrr = 3,
     },
     render = {
-        direct_scanout = 2,
+        direct_scanout = 0, -- Avoid the Mesa/Aquamarine scanout crash observed on this hybrid GPU setup.
         -- Use the option below if you find games constantly black screening for a couple seconds whenever direct scanout enables/disables
         -- non_shader_cm = 0,
     },
