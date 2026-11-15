@@ -163,3 +163,15 @@ hl.window_rule({ match = { class = "^(org\\.gnome\\.Nautilus)$" }, opacity = "1.
 
 -- Dedicated FL Studio window rules; keyboard bindings are unchanged.
 require("config.fl-studio-window")
+
+-- Keep routine REPENTOGON startup windows out of the visible game workspace.
+-- The actual Isaac window and setup/fatal-error dialogs keep their normal rules.
+hl.window_rule({
+    match = {
+        class = "^(steam_app_250900)$",
+        title = "^(REPENTOGON Launcher|REPENTOGON Launcher Updater(:.*)?|Copying Mod files from Steam\\.\\.\\.)$",
+    },
+    workspace = "special:isaac-launcher silent",
+    no_initial_focus = true,
+    suppress_event = "activate activatefocus",
+})
