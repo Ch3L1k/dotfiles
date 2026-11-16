@@ -1,7 +1,7 @@
 #!/usr/bin/python3
-# Copyright (c) 2026 Ch3L1k. SPDX-License-Identifier: MIT
-"""Manual, reversible battery saving for this Intel/Hyprland laptop."""
+"""Manual, reversible, unprivileged desktop power saving."""
 import argparse
+from contextlib import contextmanager
 import fcntl
 import json
 import os
@@ -9,159 +9,74 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import xml.etree.ElementTree as ET
+import time
+
+SCHEMA = 2
+VISUALS = {'animations:enabled': False, 'decoration:blur:enabled': False,
+           'decoration:shadow:enabled': False, 'decoration:active_opacity': 1.0,
+           'decoration:inactive_opacity': 1.0}
+
+
+def runtime():
+    return Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+
+
+def session():
+    return os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
+
+
+def state_path():
+    return runtime() / 'battery-eco/desktop.json'
 
 
 def command(*args):
-    result = subprocess.run(args, text=True, capture_output=True, timeout=20)
-    output = result.stdout.strip()
-    if result.returncode or output.startswith('error:'):
-        raise RuntimeError(result.stderr.strip() or output or str(args))
-    return output
+    result = subprocess.run(args, text=True, capture_output=True, timeout=15)
+    text = result.stdout.strip()
+    if result.returncode or text.lower().startswith('error:'):
+        raise RuntimeError(result.stderr.strip() or text or f'Не удалось выполнить {args[0]}')
+    return text
 
 
-def save(path, data):
+def save(state):
+    path = state_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_suffix('.tmp')
-    with open(temporary, 'w', opener=lambda p, f: os.open(p, f, 0o600)) as stream:
-        json.dump(data, stream, ensure_ascii=False, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    temporary.replace(path)
-
-
-def cpu_enable(root, state):
-    if state.exists():
-        return
-    turbo = root / 'devices/system/cpu/intel_pstate/no_turbo'
-    policies = sorted((root / 'devices/system/cpu/cpufreq').glob('policy[0-9]*'))
-    if not turbo.exists() or not policies:
-        raise RuntimeError('Поддерживаемый intel_pstate не найден; настройки CPU не изменены.')
-    values = {str(turbo.relative_to(root)): turbo.read_text().strip()}
-    for policy in policies:
-        for name in ('scaling_min_freq', 'scaling_max_freq'):
-            p = policy / name
-            values[str(p.relative_to(root))] = p.read_text().strip()
-    for p in (root / 'class/leds').glob('*kbd_backlight/brightness'):
-        values[str(p.relative_to(root))] = p.read_text().strip()
-    save(state, values)
+    temporary = path.with_name(f'.desktop.{os.getpid()}.tmp')
     try:
-        turbo.write_text('1')
-        for policy in policies:
-            low, high = policy / 'scaling_min_freq', policy / 'scaling_max_freq'
-            cap = min(1800000, int(high.read_text()))
-            if int(low.read_text()) > cap:
-                low.write_text(str(cap))
-            high.write_text(str(cap))
-        for relative in values:
-            if relative.startswith('class/leds/'):
-                (root / relative).write_text('0')
-    except BaseException:
-        cpu_restore(root, state)
-        raise
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as out:
+            json.dump(state, out, ensure_ascii=False, indent=2)
+            out.flush()
+            os.fsync(out.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
-def cpu_restore(root, state):
-    if not state.exists():
-        return
-    values = json.loads(state.read_text())
-    turbo = 'devices/system/cpu/intel_pstate/no_turbo'
-    errors = []
-    ordered = [turbo] + [k for k in values if k.endswith('/scaling_max_freq')]
-    ordered += [k for k in values if k not in ordered]
-    for relative in ordered:
+@contextmanager
+def mutation_lock():
+    path = runtime() / 'display-power.lock'
+    inherited = os.environ.get('DISPLAY_POWER_LOCK_FD')
+    if inherited is not None:
         try:
-            (root / relative).write_text(values[relative])
-        except OSError as error:
-            errors.append(f'{relative}: {error}')
-    if errors:
-        raise RuntimeError('; '.join(errors))
-    state.unlink()
-
-
-def gpu_limits(uuid=None):
-    tree = ET.fromstring(command('/usr/bin/nvidia-smi', '-q', '-x'))
-    gpu = next(g for g in tree.findall('gpu') if uuid is None or g.findtext('uuid') == uuid)
-    return {key: float(gpu.findtext('.//' + name).split()[0]) for key, name in
-            [('requested', 'requested_power_limit'), ('current', 'current_power_limit'),
-             ('minimum', 'min_power_limit')]} | {'uuid': gpu.findtext('uuid')}
-
-
-def gpu_restore(state):
-    if not state.exists():
+            fd = int(inherited)
+            a, b = os.fstat(fd), path.stat()
+            if (a.st_dev, a.st_ino) != (b.st_dev, b.st_ino):
+                raise ValueError('wrong lock file')
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (ValueError, OSError) as exc:
+            raise RuntimeError('Недействительная блокировка переключения экранов.') from exc
+        # Ownership belongs to the caller. Never unlock its shared open description.
+        yield fd
         return
-    data = json.loads(state.read_text())
-    if abs(gpu_limits(data['uuid'])['requested'] - data['limit']) > 0.1:
-        command('/usr/bin/nvidia-smi', '-i', data['uuid'], '-pl', str(data['limit']))
-        if abs(gpu_limits(data['uuid'])['requested'] - data['limit']) > 0.1:
-            raise RuntimeError('NVIDIA не подтвердила восстановление лимита мощности.')
-    state.unlink()
-
-
-def gpu_set_limit(state):
-    if state.exists():
-        return True
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        limits = gpu_limits()
-        target = max(limits['minimum'], min(20.0, limits['current'], limits['requested']))
-        if target >= limits['requested']:
-            return False
-        data = {'uuid': limits['uuid'], 'limit': limits['requested']}
-        save(state, data)
-        command('/usr/bin/nvidia-smi', '-i', data['uuid'], '-pl', str(target))
-        if abs(gpu_limits(data['uuid'])['requested'] - target) > 0.1:
-            raise RuntimeError('драйвер не подтвердил новый лимит после команды')
-        print(f'NVIDIA: лимит {target:g} Вт.')
-        return True
-    except Exception as error:
         try:
-            gpu_restore(state)
-        except Exception as restore_error:
-            print(f'NVIDIA: исходный лимит требует повторного восстановления: {restore_error}', file=sys.stderr)
-        print(f'NVIDIA: ограничение мощности недоступно: {error}', file=sys.stderr)
-        return False
-
-
-def gpu_enable(state):
-    runtime = Path('/sys/bus/pci/devices/0000:01:00.0/power/runtime_status')
-    if runtime.exists() and runtime.read_text().strip() == 'active':
-        gpu_set_limit(state)
-
-
-def hardware(action):
-    if os.geteuid() != 0:
-        raise RuntimeError('Для изменения аппаратных ограничений требуется sudo.')
-    directory = Path('/run/battery-eco-root')
-    directory.mkdir(mode=0o700, exist_ok=True)
-    if directory.is_symlink() or directory.stat().st_uid != 0:
-        raise RuntimeError('Небезопасный каталог состояния.')
-    with (directory / 'lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        cpu, gpu = directory / 'cpu.json', directory / 'gpu.json'
-        if action == 'on':
-            cpu_enable(Path('/sys'), cpu)
-            gpu_enable(gpu)
-        else:
-            errors = []
-            if gpu.exists():
-                try:
-                    gpu_restore(gpu)
-                except Exception as error:
-                    errors.append(str(error))
-            try:
-                cpu_restore(Path('/sys'), cpu)
-            except Exception as error:
-                errors.append(str(error))
-            if errors:
-                raise RuntimeError('; '.join(errors))
-
-
-def privileged(action):
-    # sudo reads the password directly from the user's terminal; it is never logged.
-    result = subprocess.run(['sudo', '/usr/bin/python3', str(Path(__file__).resolve()),
-                             '_hardware', action])
-    if result.returncode:
-        raise RuntimeError('Аппаратные настройки не применены/не восстановлены; см. сообщение sudo.')
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError('Переключение уже выполняется; дождитесь завершения.') from exc
+        yield fd
+    finally:
+        os.close(fd)
 
 
 def lua(value):
@@ -169,206 +84,379 @@ def lua(value):
         return 'true' if value else 'false'
     if isinstance(value, dict):
         return '{' + ','.join('[' + lua(k) + ']=' + lua(v) for k, v in value.items()) + '}'
-    if isinstance(value, list):
-        return '{' + ','.join(lua(v) for v in value) + '}'
     return json.dumps(value, ensure_ascii=False)
 
 
 def evaluate(code):
-    output = command('hyprctl', 'eval', code)
-    if output != 'ok':
-        raise RuntimeError(output)
+    result = command('hyprctl', 'eval', code)
+    if result != 'ok':
+        raise RuntimeError(result)
 
 
-def economy_mode(monitor):
-    internal = monitor['name'].startswith(('eDP-', 'LVDS-'))
-    candidates = []
-    for mode in monitor.get('availableModes', []):
-        match = re.fullmatch(r'(\d+)x(\d+)@([\d.]+)Hz', mode)
-        if not match or (int(match[1]), int(match[2])) != (monitor['width'], monitor['height']):
-            continue
-        rate = float(match[3])
-        if (45 if internal else 50) <= rate <= 60.5 and rate <= monitor['refreshRate'] + 0.1:
-            candidates.append((rate, mode.removesuffix('Hz')))
-    return min(candidates)[1] if candidates else None
+def read_profile():
+    return command('powerprofilesctl', 'get')
 
 
-def options():
-    names = ['animations:enabled', 'decoration:blur:enabled', 'decoration:shadow:enabled',
-             'decoration:active_opacity', 'decoration:inactive_opacity']
+def set_profile(value):
+    command('busctl', '--system', '--allow-interactive-authorization=no', 'set-property',
+            'net.hadess.PowerProfiles', '/net/hadess/PowerProfiles', 'net.hadess.PowerProfiles',
+            'ActiveProfile', 's', value)
+    if read_profile() != value:
+        raise RuntimeError('Профиль питания не подтвердился.')
+
+
+def read_visual(name):
+    data = json.loads(command('hyprctl', 'getoption', name, '-j'))
+    return next(data[k] for k in ('bool', 'float', 'int') if k in data)
+
+
+def set_visual(name, value):
+    parts = name.split(':')
+    tree = value
+    for part in reversed(parts):
+        tree = {part: tree}
+    evaluate('hl.config(' + lua(tree) + ')')
+    if read_visual(name) != value:
+        raise RuntimeError(f'Не применён параметр {name}.')
+
+
+def brightness_devices():
     result = {}
-    for name in names:
-        value = json.loads(command('hyprctl', 'getoption', name, '-j'))
-        value = next(value[k] for k in ('bool', 'float', 'int') if k in value)
-        node = result
+    for pattern in ('/sys/class/backlight/*', '/sys/class/leds/*kbd_backlight'):
+        import glob
+        for folder in glob.glob(pattern):
+            p = Path(folder)
+            try:
+                result[p.name] = {'value': int((p / 'brightness').read_text()),
+                                  'maximum': int((p / 'max_brightness').read_text()),
+                                  'keyboard': 'kbd_backlight' in p.name}
+            except (OSError, ValueError):
+                continue
+    return result
+
+
+def set_brightness(name, value):
+    command('brightnessctl', '-q', '-d', name, 'set', str(value))
+    current = brightness_devices().get(name)
+    if current is None or current['value'] != value:
+        raise RuntimeError(f'Не подтверждена яркость {name}.')
+
+
+def monitors():
+    return json.loads(command('hyprctl', '-j', 'monitors'))
+
+
+def monitor_key(m):
+    return m.get('description', m['name']) + '\0' + m.get('serial', '')
+
+
+def monitor_value(m):
+    return {'width': m['width'], 'height': m['height'], 'refresh': m['refreshRate']}
+
+
+def same_mode(a, b):
+    return a['width'] == b['width'] and a['height'] == b['height'] and abs(a['refresh'] - b['refresh']) < 0.6
+
+
+def economy_mode(m):
+    modes = []
+    for text in m.get('availableModes', []):
+        match = re.fullmatch(r'(\d+)x(\d+)@([\d.]+)Hz', text)
+        if match and (int(match[1]), int(match[2])) == (m['width'], m['height']):
+            rate = float(match[3])
+            minimum = 45 if m['name'].startswith(('eDP-', 'LVDS-')) else 50
+            if minimum <= rate <= 60.5 and rate <= m['refreshRate'] + .1:
+                modes.append(rate)
+    if not modes:
+        return None
+    return min(modes) if m['name'].startswith(('eDP-', 'LVDS-')) else min(modes, key=lambda rate: abs(rate - 60))
+
+
+def set_monitor(m, value):
+    # Coordinates and transform always come from the live output, never an old snapshot.
+    rule = {'output': m['name'], 'mode': f"{value['width']}x{value['height']}@{value['refresh']:.5f}",
+            'position': f"{m['x']}x{m['y']}", 'scale': m['scale'], 'transform': m.get('transform', 0)}
+    evaluate('hl.monitor(' + lua(rule) + ')')
+    for _ in range(15):
+        actual = next((a for a in monitors() if monitor_key(a) == monitor_key(m)), None)
+        if actual and same_mode(monitor_value(actual), value):
+            return
+        time.sleep(.1)
+    raise RuntimeError(f"Не подтверждена частота {m['name']}.")
+
+
+def snapshot():
+    if not session():
+        raise RuntimeError('Сеанс Hyprland не найден.')
+    return {'schema': SCHEMA, 'signature': session(), 'active': False, 'phase': 'starting',
+            'original': {'profile': read_profile(),
+                         'brightness': {k: v['value'] for k, v in brightness_devices().items()},
+                         'visuals': {k: read_visual(k) for k in VISUALS},
+                         'monitors': {monitor_key(m): monitor_value(m) for m in monitors()}},
+            'applied': {'brightness': {}, 'visuals': {}, 'monitors': {}}, 'errors': []}
+
+
+def load():
+    path = state_path()
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text())
+    if data.get('schema') == SCHEMA:
+        return data
+    # A legacy CPU/GPU transaction cannot safely be discarded from an unprivileged helper.
+    raise RuntimeError('Найден снимок старого режима. Требуется проверка его восстановления; файл сохранён.')
+
+
+def mark(state, section, key, value):
+    if section == 'profile':
+        state['applied']['profile'] = value
+    else:
+        state['applied'][section][key] = value
+    # Record intent before the write: a command may change its target then fail.
+    save(state)
+
+
+def override_path():
+    return state_path().with_name('overrides.lua')
+
+
+def write_overrides(state):
+    options = {}
+    for name, value in VISUALS.items():
+        node = options
         parts = name.split(':')
         for part in parts[:-1]:
             node = node.setdefault(part, {})
         node[parts[-1]] = value
+    modes = {}
+    for m in monitors():
+        key = monitor_key(m)
+        rate = economy_mode(m)
+        baseline = state['original']['monitors'].get(key)
+        if rate is not None and baseline and (baseline['width'], baseline['height']) == (m['width'], m['height']):
+            modes[m['name']] = f"{m['width']}x{m['height']}@{rate:.5f}"
+    path = override_path()
+    temporary = path.with_name(f'.overrides.{os.getpid()}.tmp')
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as out:
+            out.write('return ' + lua({'signature': state['signature'], 'options': options, 'monitors': modes}) + '\n')
+            out.flush()
+            os.fsync(out.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def restore(state):
+    # A failed restore must not re-enable economy during a later compositor reload.
+    override_path().unlink(missing_ok=True)
+    errors = []
+    orig, applied = state['original'], state['applied']
+    def attempt(label, fn):
+        try:
+            fn()
+        except Exception as exc:
+            errors.append(f'{label}: {exc}')
+    if 'profile' in applied:
+        def profile():
+            if read_profile() == applied['profile']:
+                set_profile(orig['profile'])
+        attempt('Профиль', profile)
+    devices = brightness_devices()
+    for name, value in applied['brightness'].items():
+        if name in devices and devices[name]['value'] == value:
+            attempt(name, lambda n=name: set_brightness(n, orig['brightness'][n]))
+    if state['signature'] == session():
+        for name, value in applied['visuals'].items():
+            def visual(n=name, v=value):
+                if read_visual(n) == v:
+                    set_visual(n, orig['visuals'][n])
+            attempt(name, visual)
+        try:
+            current = {monitor_key(m): m for m in monitors()}
+            for key, value in applied['monitors'].items():
+                if key in current and same_mode(monitor_value(current[key]), value):
+                    attempt(current[key]['name'], lambda k=key: set_monitor(current[k], orig['monitors'][k]))
+        except Exception as exc:
+            errors.append(f'Мониторы: {exc}')
+    if errors:
+        state.update(active=False, phase='restore-pending', errors=errors)
+        save(state)
+        raise RuntimeError('Восстановление не завершено: ' + '; '.join(errors))
+    state_path().unlink(missing_ok=True)
+
+
+def apply_display(state):
+    for name, value in VISUALS.items():
+        if read_visual(name) != value:
+            mark(state, 'visuals', name, value)
+            set_visual(name, value)
+    for m in monitors():
+        key = monitor_key(m)
+        rate = economy_mode(m)
+        if rate is None or abs(m['refreshRate'] - rate) < .1:
+            continue
+        # Newly enabled outputs also get a baseline; old ones keep their first snapshot.
+        if key not in state['original']['monitors']:
+            state['original']['monitors'][key] = monitor_value(m)
+        baseline = state['original']['monitors'][key]
+        if (baseline['width'], baseline['height']) != (m['width'], m['height']):
+            # A user resolution change is authoritative: do not restore an obsolete resolution.
+            continue
+        value = monitor_value(m) | {'refresh': rate}
+        mark(state, 'monitors', key, value)
+        set_monitor(m, value)
+
+
+def enable():
+    old = load()
+    if old:
+        if not old['active'] or old['signature'] != session():
+            raise RuntimeError('Сначала завершите восстановление обычного режима.')
+        return
+    state = snapshot()
+    save(state)
+    try:
+        if state['original']['profile'] != 'power-saver':
+            mark(state, 'profile', None, 'power-saver')
+            set_profile('power-saver')
+        for name, device in brightness_devices().items():
+            if name not in state['original']['brightness']:
+                continue
+            target = 0 if device['keyboard'] else min(device['value'], max(1, device['maximum'] // 4))
+            if target != device['value']:
+                mark(state, 'brightness', name, target)
+                set_brightness(name, target)
+        apply_display(state)
+        state.update(active=True, phase='active', errors=[])
+        write_overrides(state)
+        save(state)
+    except BaseException as original:
+        try:
+            restore(state)
+        except Exception as rollback:
+            raise RuntimeError(f'{original}; {rollback}') from original
+        raise
+
+
+def disable():
+    state = load()
+    if state:
+        restore(state)
+    else:
+        override_path().unlink(missing_ok=True)
+
+
+def reconcile():
+    state = load()
+    if not state or not state['active'] or state['signature'] != session():
+        return
+    # This explicit call follows a compositor reload/display-layout transition.
+    # Brightness/profile are intentionally left alone, since the user can change them.
+    try:
+        apply_display(state)
+        write_overrides(state)
+        state['errors'] = []
+        save(state)
+    except Exception as exc:
+        state['errors'] = [str(exc)]
+        save(state)
+        raise
+
+
+def status():
+    result = {'active': False, 'pending': False, 'issues': [], 'profile': None, 'cpu': {}, 'battery': [], 'monitors': []}
+    try:
+        state = load()
+    except Exception as exc:
+        state = None
+        result['pending'] = True
+        result['issues'].append(str(exc))
+    if state:
+        result['active'] = bool(state.get('active'))
+        result['pending'] = not result['active']
+        result['issues'] += state.get('errors', [])
+        if state['signature'] != session():
+            result['issues'].append('Сеанс Hyprland изменился; параметры старого рабочего стола не будут восстановлены.')
+    try:
+        result['profile'] = read_profile()
+        if state and state['active'] and result['profile'] != 'power-saver':
+            result['issues'].append('Профиль питания изменён вручную.')
+    except Exception as exc:
+        result['issues'].append(str(exc))
+    for policy in Path('/sys/devices/system/cpu/cpufreq').glob('policy[0-9]*'):
+        info = {}
+        for name in ('scaling_max_freq', 'scaling_min_freq', 'scaling_governor', 'energy_performance_preference'):
+            try:
+                info[name] = (policy / name).read_text().strip()
+            except OSError:
+                pass
+        result['cpu'][policy.name] = info
+    turbo = Path('/sys/devices/system/cpu/intel_pstate/no_turbo')
+    result['turbo_allowed'] = turbo.read_text().strip() == '0' if turbo.exists() else None
+    for p in Path('/sys/class/power_supply').glob('*'):
+        try:
+            if (p / 'type').read_text().strip() != 'Battery':
+                continue
+            b = {'name': p.name, 'capacity': int((p / 'capacity').read_text()), 'status': (p / 'status').read_text().strip()}
+            if (p / 'power_now').exists():
+                b['watts'] = int((p / 'power_now').read_text()) / 1e6
+            elif (p / 'current_now').exists() and (p / 'voltage_now').exists():
+                b['watts'] = abs(int((p / 'current_now').read_text()) * int((p / 'voltage_now').read_text())) / 1e12
+            result['battery'].append(b)
+        except (OSError, ValueError):
+            pass
+    try:
+        current_monitors = monitors()
+        result['monitors'] = [{'name': m['name'], 'refresh': m['refreshRate']} for m in current_monitors]
+        if state and state['active'] and state['signature'] == session():
+            for m in current_monitors:
+                target = state['applied']['monitors'].get(monitor_key(m))
+                if target and not same_mode(monitor_value(m), target):
+                    result['issues'].append(f"Частота или разрешение {m['name']} изменены после включения экономии.")
+            for name in state['applied']['visuals']:
+                if read_visual(name) != state['applied']['visuals'][name]:
+                    result['issues'].append('Эффекты изменены после включения экономии.')
+                    break
+    except Exception as exc:
+        result['issues'].append(str(exc))
     return result
 
 
-def desktop_snapshot():
-    monitors = json.loads(command('hyprctl', '-j', 'monitors'))
-    backlights = list(Path('/sys/class/backlight').glob('*'))
-    return {'signature': os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'),
-            'profile': command('powerprofilesctl', 'get'), 'options': options(),
-            'monitors': monitors,
-            'brightness': {d.name: int((d / 'brightness').read_text()) for d in backlights},
-            'active': False}
-
-
-def restore_desktop(state):
-    errors = []
-    for name, value in state['brightness'].items():
-        try:
-            command('brightnessctl', '-d', name, 'set', str(value))
-        except Exception as error:
-            errors.append(str(error))
-    if state['signature'] == os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'):
-        try:
-            current = {m['name']: m for m in json.loads(command('hyprctl', '-j', 'monitors'))}
-        except Exception as error:
-            errors.append(str(error))
-            current = {}
-        for monitor in state['monitors']:
-            try:
-                active = current.get(monitor['name'])
-                if active and active.get('description') == monitor.get('description'):
-                    evaluate('hl.monitor(' + lua({
-                        'output': monitor['name'],
-                        'mode': f"{monitor['width']}x{monitor['height']}@{monitor['refreshRate']:.5f}",
-                        'position': f"{monitor['x']}x{monitor['y']}",
-                        'scale': monitor['scale'], 'transform': monitor.get('transform', 0),
-                    }) + ')')
-            except Exception as error:
-                errors.append(str(error))
-        try:
-            evaluate('hl.config(' + lua(state['options']) + ')')
-        except Exception as error:
-            errors.append(str(error))
-    try:
-        if command('powerprofilesctl', 'get') != state['profile']:
-            command('powerprofilesctl', 'set', state['profile'])
-    except Exception as error:
-        errors.append(str(error))
-    if errors:
-        raise RuntimeError('; '.join(errors))
-
-
-def enable(state_path):
-    if state_path.exists():
-        state = json.loads(state_path.read_text())
-        if not state.get('active'):
-            raise RuntimeError('Остался незавершённый запуск; сначала выполните battery-eco off.')
-        print('Экономия уже включена; исходный снимок сохранён.')
-        return
-    state = desktop_snapshot()
-    save(state_path, state)
-    cpu_active = False
-    try:
-        if state['profile'] != 'power-saver':
-            command('powerprofilesctl', 'set', 'power-saver')
-        cpu_active = True
-        privileged('on')
-        for name, old in state['brightness'].items():
-            maximum = int((Path('/sys/class/backlight') / name / 'max_brightness').read_text())
-            command('brightnessctl', '-d', name, 'set', str(min(old, max(1, maximum // 4))))
-        evaluate('hl.config(' + lua({'animations': {'enabled': False},
-                  'decoration': {'blur': {'enabled': False}, 'shadow': {'enabled': False},
-                                 'active_opacity': 1.0, 'inactive_opacity': 1.0}}) + ')')
-        for monitor in state['monitors']:
-            mode = economy_mode(monitor)
-            if mode:
-                evaluate('hl.monitor(' + lua({'output': monitor['name'], 'mode': mode,
-                    'position': f"{monitor['x']}x{monitor['y']}", 'scale': monitor['scale'],
-                    'transform': monitor.get('transform', 0)}) + ')')
-        errors = command('hyprctl', 'configerrors').strip()
-        if errors:
-            raise RuntimeError(errors)
-        state['active'] = True
-        save(state_path, state)
-    except BaseException:
-        rollback_errors = []
-        if cpu_active:
-            try:
-                privileged('off')
-            except Exception as error:
-                rollback_errors.append(str(error))
-        try:
-            restore_desktop(state)
-        except Exception as rollback:
-            rollback_errors.append(str(rollback))
-        if rollback_errors:
-            print('Откат не завершён; выполните battery-eco off: ' + '; '.join(rollback_errors), file=sys.stderr)
-        else:
-            state_path.unlink()
-        raise
-    print('Экономия включена: CPU до 1,8 ГГц, низкая яркость, эффекты выключены.')
-
-
-def disable(state_path):
-    # Restore hardware even when the desktop session was restarted.
-    errors = []
-    try:
-        privileged('off')
-    except Exception as error:
-        errors.append(str(error))
-    if state_path.exists():
-        state = json.loads(state_path.read_text())
-        try:
-            restore_desktop(state)
-        except Exception as error:
-            errors.append(str(error))
-        if errors:
-            state['active'] = False
-            save(state_path, state)
-    if errors:
-        raise RuntimeError('Восстановление завершено не полностью: ' + '; '.join(errors))
-    if state_path.exists():
-        state_path.unlink()
-    print('Экономия выключена; сохранённые параметры восстановлены.')
-
-
-def status(state_path):
-    state = json.loads(state_path.read_text()) if state_path.exists() else None
-    mode = ('ВКЛ' if state.get('active') else 'НЕЗАВЕРШЁННОЕ ИЗМЕНЕНИЕ — выполните off') if state else 'ВЫКЛ'
-    print('Экономия: ' + mode)
-    p = Path('/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq')
-    if p.exists():
-        print(f'Предел CPU: {int(p.read_text()) / 1e6:.2f} ГГц')
-    p = Path('/sys/devices/system/cpu/intel_pstate/no_turbo')
-    if p.exists():
-        print('Turbo Boost: ' + ('выключен' if p.read_text().strip() == '1' else 'разрешён'))
-    for battery in Path('/sys/class/power_supply').glob('*'):
-        if not (battery / 'type').exists() or (battery / 'type').read_text().strip() != 'Battery':
-            continue
-        print(f"Батарея: {(battery / 'capacity').read_text().strip()}%, {(battery / 'status').read_text().strip()}")
-        if (battery / 'current_now').exists() and (battery / 'voltage_now').exists():
-            watts = abs(int((battery / 'current_now').read_text()) * int((battery / 'voltage_now').read_text())) / 1e12
-            print(f'Мгновенная мощность батареи: {watts:.1f} Вт')
-
-
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == '_hardware' and sys.argv[2] in ('on', 'off'):
-        hardware(sys.argv[2])
-        return
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['on', 'off', 'toggle', 'status'], nargs='?', default='status')
+    parser.add_argument('action', choices=['on', 'off', 'toggle', 'status', 'reconcile'], nargs='?', default='status')
+    parser.add_argument('--json', action='store_true')
     args = parser.parse_args()
     if os.geteuid() == 0:
-        raise RuntimeError('Запускайте battery-eco обычным пользователем; sudo будет вызван автоматически.')
-    directory = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'battery-eco'
-    directory.mkdir(mode=0o700, exist_ok=True)
-    state_path = directory / 'desktop.json'
-    with (directory / 'lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        action = ('off' if state_path.exists() else 'on') if args.action == 'toggle' else args.action
-        if action == 'on':
-            enable(state_path)
-        elif action == 'off':
-            disable(state_path)
-        status(state_path)
+        raise RuntimeError('Этот скрипт запускается обычным пользователем.')
+    if args.action != 'status':
+        with mutation_lock():
+            action = args.action
+            if action == 'toggle':
+                action = 'off' if state_path().exists() else 'on'
+            {'on': enable, 'off': disable, 'reconcile': reconcile}[action]()
+    data = status()
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False))
+    else:
+        print('Экономия: ' + ('ВОССТАНОВЛЕНИЕ НЕ ЗАВЕРШЕНО' if data['pending'] else 'ВКЛ' if data['active'] else 'ВЫКЛ'))
+        print('Профиль: ' + str(data['profile']))
+        if data['cpu']:
+            values = list(data['cpu'].values())
+            limits = [int(v['scaling_max_freq']) / 1e6 for v in values if 'scaling_max_freq' in v]
+            if limits:
+                print(f'Разрешённый максимум CPU: {max(limits):.2f} ГГц (не текущая частота)')
+            epp = sorted({v['energy_performance_preference'] for v in values if 'energy_performance_preference' in v})
+            if epp:
+                print('Предпочтение CPU: ' + ', '.join(epp))
+        for b in data['battery']:
+            print(f"Батарея: {b['capacity']}%, {b['status']}")
+            if 'watts' in b:
+                print(('Мощность зарядки' if b['status'] == 'Charging' else 'Мощность разряда') + f": {b['watts']:.1f} Вт")
+        for issue in data['issues']:
+            print('Внимание: ' + issue)
 
 
 if __name__ == '__main__':

@@ -1,11 +1,12 @@
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 local saved = DISPLAY_MODE.monitors or {}
+local power = require("config.session-power")
 local function normal_rule(output, fallback_mode, fallback_position)
     local monitor = saved[output] or {}
     return {
         output = output,
         disabled = false,
-        mode = monitor.mode or fallback_mode,
+        mode = (power.economy.monitors or {})[output] or (power.manual.monitors or {})[output] or monitor.mode or fallback_mode,
         position = monitor.position or fallback_position,
         scale = monitor.scale or 1,
         transform = monitor.transform or 0,

@@ -171,9 +171,10 @@ def apply(target, snapshot):
     atomic_write(mode_file, "-- laptop_only=" + lua(only_laptop) +
                  "\n-- external_only=" + lua(target == "external") + "\nreturn " + lua(state) + "\n")
     try:
-        command("hyprctl", "reload")
+        command("hyprctl", "reload", "config-only")
     finally:
-        evaluate("hl.config(" + lua(visuals) + ")")
+        if not (runtime / "battery-eco/desktop.json").exists():
+            evaluate("hl.config(" + lua(visuals) + ")")
     deadline = time.monotonic() + 6
     while time.monotonic() < deadline:
         active = {m["name"] for m in query("monitors") if not m.get("disabled")}
@@ -241,12 +242,12 @@ def main():
             for m in query("monitors")
         ]}))
         return
-    with (directory / "lock").open("w") as lock:
+    with (runtime / "display-power.lock").open("a") as lock:
         try:
             # Recovery is queued behind a transition, never discarded during hot-unplug.
             fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.recover_external else fcntl.LOCK_NB))
         except BlockingIOError:
-            return
+            raise RuntimeError("Другой режим уже переключается; дождитесь завершения.")
         if args.recover_external:
             if not external_mode():
                 return
@@ -278,8 +279,15 @@ def main():
                 apply("dual", snapshot)
             except Exception:
                 mode_file.unlink(missing_ok=True)
-                subprocess.run(["hyprctl", "reload"], capture_output=True, timeout=10)
+                subprocess.run(["hyprctl", "reload", "config-only"], capture_output=True, timeout=10)
             raise
+        if (runtime / "battery-eco/desktop.json").exists():
+            env = os.environ.copy()
+            env["DISPLAY_POWER_LOCK_FD"] = str(lock.fileno())
+            result = subprocess.run([str(Path.home() / ".local/bin/battery-eco"), "reconcile"],
+                                    env=env, pass_fds=(lock.fileno(),), capture_output=True, text=True, timeout=30)
+            if result.returncode:
+                raise RuntimeError(result.stderr.strip() or "Не удалось согласовать экономию и мониторы")
         # XWayland has its own primary output, independent of Hyprland focus.
         try:
             subprocess.run([str(Path.home() / ".local/bin/set-xwayland-primary")],

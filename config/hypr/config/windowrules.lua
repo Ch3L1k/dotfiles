@@ -175,3 +175,4 @@ hl.window_rule({
     no_initial_focus = true,
     suppress_event = "activate activatefocus",
 })
+

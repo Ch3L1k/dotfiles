@@ -4,7 +4,7 @@
 "ui_scale" = 1.2
 
 ["bar"]
-"default" = {"background_opacity" = 0.7999999821186066, "center" = ["polish_special", "workspaces"], "concave_edge_corners" = true, "end" = ["audio_visualizer", "keyboard_layout", "tray", "screen_recording", "notifications", "network", "polish_audio", "session"], "margin_edge" = 0, "margin_ends" = 0, "radius_bottom_left" = 12, "radius_bottom_right" = 12, "radius_top_left" = 0, "radius_top_right" = 0, "scale" = 1.1, "start" = ["clock", "gamermode", "polish_stats", "cat", "media", "widget", "wallpaper"], "thickness" = 35, "capsule_group" = [{"border" = "", "fill" = "on_secondary", "id" = "g1", "members" = ["temp", "sysmon_2", "sysmon_3"], "opacity" = 1.0, "padding" = 6.0}], "capsule" = true, "capsule_opacity" = 0.8799999803304672, "contact_shadow" = true, "font_weight" = 600}
+"default" = {"background_opacity" = 0.7999999821186066, "center" = ["polish_special", "workspaces"], "concave_edge_corners" = true, "end" = ["system_scripts", "audio_visualizer", "keyboard_layout", "tray", "screen_recording", "notifications", "network", "polish_audio", "session"], "margin_edge" = 0, "margin_ends" = 0, "radius_bottom_left" = 12, "radius_bottom_right" = 12, "radius_top_left" = 0, "radius_top_right" = 0, "scale" = 1.1, "start" = ["clock", "gamermode", "polish_stats", "cat", "media", "widget", "wallpaper"], "thickness" = 35, "capsule_group" = [{"border" = "", "fill" = "on_secondary", "id" = "g1", "members" = ["temp", "sysmon_2", "sysmon_3"], "opacity" = 1.0, "padding" = 6.0}], "capsule" = true, "capsule_opacity" = 0.8799999803304672, "contact_shadow" = true, "font_weight" = 600}
 
 ["shell"]
 "clipboard_image_action_command" = "swash --stdin --name \"swash-$(date +'%Y-%m-%d_%H:%M:%S').png\""
@@ -12,7 +12,7 @@
 "polkit_agent" = true
 "settings_show_advanced" = true
 "greeter_sync" = {"auto_sync" = false}
-"panel" = {"open_near_click_control_center" = true, "session_placement" = "floating", "session_position" = "center", "launcher_placement" = "attached", "launcher_position" = "auto"}
+"panel" = {"open_near_click_control_center" = true, "session_placement" = "floating", "session_position" = "center", "launcher_placement" = "attached", "launcher_position" = "auto", "polkit_placement" = "floating", "polkit_position" = "center"}
 "screenshot" = {"copy_to_clipboard" = true, "pipe_command" = "swash --stdin --name \"swash-$(date +'%Y-%m-%d_%H:%M:%S').png\"", "pipe_to_command" = true, "save_to_file" = true, "copy_on_close" = true, "directory" = "@HOME@/Pictures/Screenshot"}
 "session" = {"actions" = [{"action" = "lock", "countdown_seconds" = 0.0, "enabled" = true, "shortcut" = "1", "variant" = "default"}, {"action" = "logout", "countdown_seconds" = 0.0, "enabled" = true, "shortcut" = "2", "variant" = "default"}, {"action" = "lock_and_suspend", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "3", "variant" = "default"}, {"action" = "suspend", "label" = "Сон", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "6", "variant" = "default"}, {"action" = "reboot", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "4", "variant" = "default"}, {"action" = "shutdown", "countdown_seconds" = 3.0, "enabled" = true, "shortcut" = "5", "variant" = "destructive"}]}
 "corner_radius_scale" = 2.0
@@ -59,6 +59,7 @@
 "polish_voice" = {"type" = "raycursive/discord-voice:bar", "hide_when_disconnected" = true, "show_channel_name" = true}
 "polish_audio" = {"type" = "blackbartblues/audio-switcher:widget", "actions" = {"right" = "exec pavucontrol", "middle" = "volume-mute"}}
 "polish_autoclicker" = {"type" = "amirfarzamnia/autoclicker:widget"}
+"system_scripts" = {"type" = "ch3l1k/system-controls:button"}
 "screen_recording" = {"actions" = {"left" = "panel-toggle ch3l1k/record-controls:main", "right" = "panel-toggle ch3l1k/record-controls:main"}, "type" = "noctalia/screen_recorder:recorder"}
 "audio_visualizer" = {"show_when_idle" = true}
 "cat" = {"cat_size" = 31, "type" = "dotnetrob/cat:cat"}
@@ -126,7 +127,7 @@
 "kinds" = {"keyboard_layout" = false, "media" = false}
 
 ["plugins"]
-"enabled" = ["blackbartblues/audio-switcher", "amirfarzamnia/autoclicker", "yugaaank/better-clock", "nomadcxx/gamer-mode", "yocraft/qrcode", "jamesfeeder/special-workspaces", "noctalia/translator", "dotnetrob/cat", "noctalia/screen_recorder", "ch3l1k/record-controls"]
+"enabled" = ["blackbartblues/audio-switcher", "amirfarzamnia/autoclicker", "yugaaank/better-clock", "nomadcxx/gamer-mode", "yocraft/qrcode", "jamesfeeder/special-workspaces", "noctalia/translator", "dotnetrob/cat", "noctalia/screen_recorder", "ch3l1k/record-controls", "ch3l1k/system-controls"]
 
 ["wallpaper"]
 "directory" = "@HOME@/Pictures/Wallpapers"

@@ -19,3 +19,7 @@ require("noctalia").apply_theme()
 require("config.firefox-alt")
 
 require("config.keybind-toggle")
+
+-- Keep manual economy effects across reloads, including palette updates.
+local economy = require("config.session-power").economy
+if next(economy.options or {}) then hl.config(economy.options) end

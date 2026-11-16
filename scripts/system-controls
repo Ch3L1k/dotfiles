@@ -14,7 +14,7 @@ def actions(eco):
       ('external','Мониторы','device-desktop','Только внешний · 60 Гц','Повторное нажатие возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-60']),
       ('laptop','Мониторы','device-laptop','Только ноутбук / оба экрана','Переключение с сохранением расположения рабочих столов','Переключить',[str(BIN/'toggle-main-monitor')]),
       ('restore','Мониторы','devices','Вернуть раскладку мониторов','Восстановить сохранённые экраны и их режимы','Вернуть',[str(BIN/'toggle-main-monitor'),'--restore']),
-      ('record','Инструменты','video','Запись экрана','Область, качество, частота кадров и звук','Открыть',['noctalia','msg','panel-toggle','4el1k/record-controls:main']),
+      ('record','Инструменты','video','Запись экрана','Область, качество, частота кадров и звук','Открыть',['noctalia','msg','panel-toggle','ch3l1k/record-controls:main']),
       ('blur','Инструменты','eye-off','Приватность вебкамеры','Переключить сильное размытие в OBS · Alt + Z','Переключить',[str(BIN/'obs-camera-blur'),'toggle']),
       ('btop','Инструменты','chart-bar','Монитор ресурсов','Показать / скрыть btop','Открыть',[str(BIN/'toggle-special-app'),'btop']),
       ('autoclicker','Инструменты','mouse','Автокликер','Настройки и управление автоматическими нажатиями','Открыть',['noctalia','msg','settings-open-plugin','amirfarzamnia/autoclicker']),

@@ -4,8 +4,8 @@
     "type": "file",
     "source": "@HOME@/.config/fastfetch/logo.txt",
     "color": {
-      "1": "#dbc84e",
-      "2": "#cfc763"
+      "1": "#abd463",
+      "2": "#c0ca63"
     },
     "padding": {
       "right": 3,
@@ -14,13 +14,13 @@
   },
   "display": {
     "color": {
-      "keys": "#dbc84e",
-      "title": "#cfc7a2"
+      "keys": "#abd471",
+      "title": "#c0caac"
     },
     "percent": {
       "color": {
-        "green": "#a8d0b6",
-        "yellow": "#dbc84e",
+        "green": "#a0d0ca",
+        "yellow": "#abd471",
         "red": "#ffb4ab"
       }
     },
