@@ -1,0 +1,16 @@
+id = "ch3l1k/nightlight-controls"
+name = "Ночной цвет"
+version = "1.0.0"
+plugin_api = 26
+author = "Ch3L1k"
+license = "MIT"
+icon = "moon-stars"
+description = "Температура экрана и расписание встроенного ночного света Noctalia"
+[[panel]]
+id = "main"
+entry = "panel.luau"
+width = 620
+height = 720
+placement = "attached"
+position = "top_center"
+keyboard_focus = "on_demand"

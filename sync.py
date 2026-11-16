@@ -15,7 +15,7 @@ import tomllib
 
 SECTIONS = {
     "accessibility", "bar", "battery", "bluetooth", "brightness", "control_center",
-    "desktop_widgets", "dock", "lockscreen", "lockscreen_widgets", "notification",
+    "desktop_widgets", "dock", "nightlight", "lockscreen", "lockscreen_widgets", "notification",
     "osd", "plugin_settings", "plugins", "shell", "system", "theme", "widget",
 }
 PRIVATE_KEYS = re.compile(r"password|secret|api.?key|access.?token|refresh.?token|authorization|cookie|latitude|longitude|avatar_path|account_id|user_id|guild_id|channel_id|geolocation|coordinates", re.I)
