@@ -1,16 +1,103 @@
 id = "ch3l1k/nightlight-controls"
 name = "Ночной цвет"
-version = "1.0.0"
+version = "2.0.0"
 plugin_api = 26
 author = "Ch3L1k"
 license = "MIT"
 icon = "moon-stars"
-description = "Температура экрана и расписание встроенного ночного света Noctalia"
-[[panel]]
-id = "main"
-entry = "panel.luau"
-width = 620
-height = 720
-placement = "attached"
-position = "top_center"
-keyboard_focus = "on_demand"
+description = "Комфортный цвет экрана вечером. Настройки применяются автоматически."
+
+[[setting]]
+key = "mode"
+type = "select"
+label_key = "settings.mode.label"
+description_key = "settings.mode.description"
+default = "off"
+options = [
+{ value = "off", label_key = "settings.mode.options.off" },
+{ value = "always", label_key = "settings.mode.options.always" },
+{ value = "times", label_key = "settings.mode.options.times" },
+{ value = "sun", label_key = "settings.mode.options.sun" },
+]
+
+[[setting]]
+key = "warmth"
+type = "select"
+label_key = "settings.warmth.label"
+description_key = "settings.warmth.description"
+default = "4000"
+options = [
+{ value = "4500", label_key = "settings.warmth.options.4500" },
+{ value = "4000", label_key = "settings.warmth.options.4000" },
+{ value = "3500", label_key = "settings.warmth.options.3500" },
+{ value = "2500", label_key = "settings.warmth.options.2500" },
+{ value = "custom", label_key = "settings.warmth.options.custom" },
+]
+
+[[setting]]
+key = "temperature"
+type = "int"
+label_key = "settings.temperature.label"
+description_key = "settings.temperature.description"
+default = 4000
+visible_when = { key = "warmth", values = ["custom"] }
+min = 1000
+max = 9900
+step = 100
+
+[[setting]]
+key = "start_time"
+type = "string"
+label_key = "settings.start_time.label"
+description_key = "settings.start_time.description"
+default = "22:00"
+visible_when = { key = "mode", values = ["times"] }
+
+[[setting]]
+key = "end_time"
+type = "string"
+label_key = "settings.end_time.label"
+description_key = "settings.end_time.description"
+default = "07:00"
+visible_when = { key = "mode", values = ["times"] }
+
+[[setting]]
+key = "city"
+type = "string"
+label_key = "settings.city.label"
+description_key = "settings.city.description"
+default = ""
+visible_when = { key = "mode", values = ["sun"] }
+
+[[setting]]
+key = "latitude"
+type = "string"
+label_key = "settings.latitude.label"
+description_key = "settings.latitude.description"
+default = ""
+visible_when = { key = "mode", values = ["sun"] }
+advanced = true
+
+[[setting]]
+key = "longitude"
+type = "string"
+label_key = "settings.longitude.label"
+description_key = "settings.longitude.description"
+default = ""
+visible_when = { key = "mode", values = ["sun"] }
+advanced = true
+
+[[setting]]
+key = "day_temperature"
+type = "int"
+label_key = "settings.day_temperature.label"
+description_key = "settings.day_temperature.description"
+default = 6500
+advanced = true
+min = 1100
+max = 10000
+step = 100
+
+[[service]]
+id = "service"
+entry = "service.luau"

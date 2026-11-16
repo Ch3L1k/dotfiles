@@ -64,7 +64,7 @@
 "audio_visualizer" = {"show_when_idle" = true}
 "cat" = {"cat_size" = 31, "type" = "dotnetrob/cat:cat"}
 "gamermode" = {"type" = "nomadcxx/gamer-mode:gamermode"}
-"nightlight" = {"actions" = {"left" = "panel-toggle ch3l1k/nightlight-controls:main", "middle" = "nightlight-toggle", "right" = "nightlight-force-toggle"}}
+"nightlight" = {"actions" = {"left" = "settings-open-plugin ch3l1k/nightlight-controls", "middle" = "nightlight-toggle", "right" = "nightlight-force-toggle"}}
 "widget" = {"type" = "aabidk20/yt-music:widget"}
 
 ["plugin_settings"]
@@ -76,6 +76,7 @@
 "noctalia/wallpaper_depth" = {"auto_generate" = true, "manager_open_near_click" = true, "manager_placement" = "floating", "threshold" = 48}
 "noctalia/screen_recorder" = {"audio_bitrate" = 192, "audio_codec" = "aac", "audio_source" = "default_output", "color_range" = "limited", "directory" = "@HOME@/Videos/Recordings", "filename_pattern" = "recording_%Y%m%d_%H%M%S", "frame_rate" = 60, "frame_rate_mode" = "cfr", "replay_enabled" = false, "resolution" = "original", "show_cursor" = false, "video_bitrate_mode" = "qp", "video_codec" = "h264", "video_encoder" = "gpu", "video_qp" = 21, "video_source" = "focused"}
 "aabidk20/yt-music" = {"debug_logging" = true}
+"ch3l1k/nightlight-controls" = {"city" = "", "day_temperature" = 6500, "end_time" = "07:00", "mode" = "always", "start_time" = "22:00", "temperature" = 6400, "warmth" = "custom"}
 
 ["control_center"]
 "shortcuts" = [{"type" = "wifi"}, {"type" = "bluetooth"}, {"type" = "caffeine"}, {"type" = "nightlight"}, {"type" = "notification"}, {"type" = "power_profile"}, {"type" = "yocraft/qrcode:shortcut"}]
@@ -83,9 +84,9 @@
 
 ["nightlight"]
 "enabled" = false
-"force" = false
+"force" = true
 "temperature_day" = 6500
-"temperature_night" = 4000
+"temperature_night" = 6400
 
 ["battery"]
 "warning_threshold" = 25

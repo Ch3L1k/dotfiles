@@ -10,7 +10,7 @@ def actions(eco):
     return [
       ('eco','Питание','battery-eco','Экономия батареи','Без пароля · профиль питания, яркость и эффекты','Выключить' if eco else 'Включить',[str(BIN/'battery-eco'),'toggle']),
       ('power-status','Питание','activity','Состояние энергосбережения','Профиль питания и состояние батареи','Проверить',[str(BIN/'battery-eco'),'status']),
-      ('nightlight','Мониторы','moon-stars','Ночной цвет','Температура экрана и расписание','Настроить',['noctalia','msg','panel-toggle','ch3l1k/nightlight-controls:main']),
+      ('nightlight','Мониторы','moon-stars','Ночной цвет','Температура экрана и расписание','Настроить',['noctalia','msg','settings-open-plugin','ch3l1k/nightlight-controls']),
       ('main60','Мониторы','refresh','Основной монитор · 60 Гц','Меняет только частоту · повторно возвращает прежнюю','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
       ('external','Мониторы','device-desktop','Только внешний · 60 Гц','Повторное нажатие возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-60']),
       ('laptop','Мониторы','device-laptop','Только ноутбук / оба экрана','Переключение с сохранением расположения рабочих столов','Переключить',[str(BIN/'toggle-main-monitor')]),

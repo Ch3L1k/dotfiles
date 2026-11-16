@@ -1,63 +1,96 @@
 #!/usr/bin/python3
-"""Validated configuration bridge for Noctalia's built-in night light."""
-import sys,json,subprocess,tomllib,re,fcntl,os
+"""Translate the native Noctalia Settings page into native nightlight configuration."""
+import json,os,re,subprocess,sys,tomllib,fcntl
 from pathlib import Path
 
-def cmd(*a):
- p=subprocess.run(['noctalia','msg',*a],capture_output=True,text=True,timeout=8)
+KEYS={'mode','warmth','temperature','day_temperature','start_time','end_time','city','latitude','longitude'}
+def cmd(*args):
+ p=subprocess.run(['noctalia','msg',*args],capture_output=True,text=True,timeout=8)
  if p.returncode or p.stdout.startswith('error:'):raise RuntimeError(p.stderr.strip() or p.stdout.strip())
  return p.stdout.strip()
 def get():
- return {'nightlight':tomllib.loads(cmd('config-get','nightlight')),'location':tomllib.loads(cmd('config-get','location'))}
-def toml(v):
- if isinstance(v,bool):return str(v).lower()
- if isinstance(v,dict):return '{'+', '.join(k+' = '+toml(x) for k,x in v.items())+'}'
- return json.dumps(v,ensure_ascii=False)
-def validate(d):
- n=d['nightlight'];l=d['location']
- if set(n)!={'enabled','force','temperature_day','temperature_night'}:raise ValueError('Недопустимые параметры ночного цвета')
- for k in ['enabled','force']:
-  if type(n[k]) is not bool:raise ValueError('Недопустимый переключатель')
- for k in ['temperature_day','temperature_night']:
-  if type(n[k]) is not int or not 1000<=n[k]<=10000:raise ValueError('Температура: от 1000 до 10000 К')
- if n['temperature_day']<n['temperature_night']+100:raise ValueError('Дневная температура должна быть выше ночной хотя бы на 100 К')
- if set(l)-{'auto_locate','address','custom_schedule','sunrise','sunset','latitude','longitude'}:raise ValueError('Недопустимые параметры расписания')
- for k in ['auto_locate','custom_schedule']:
-  if type(l.get(k)) is not bool:raise ValueError('Недопустимый режим расписания')
- for k in ['sunrise','sunset']:
-  v=l.get(k,'')
-  if v and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',v):raise ValueError('Время укажите в формате ЧЧ:ММ')
- if l['custom_schedule'] and (not l.get('sunrise') or not l.get('sunset') or l['sunrise']==l['sunset']):raise ValueError('Укажите разное время включения и выключения')
- for k,limit in [('latitude',90),('longitude',180)]:
-  if k in l and (type(l[k]) not in (float,int) or not -limit<=l[k]<=limit):raise ValueError('Недопустимые координаты')
- if not l['custom_schedule'] and not l['auto_locate'] and not l.get('address') and not ('latitude' in l and 'longitude' in l):raise ValueError('Для режима по солнцу нужны город или координаты')
- if type(l.get('address','')) is not str or len(l.get('address',''))>200:raise ValueError('Недопустимый адрес')
- return d
+ return {k:tomllib.loads(cmd('config-get',k)) for k in ('nightlight','location')}
+def toml(value):
+ if isinstance(value,bool):return str(value).lower()
+ if isinstance(value,dict):return '{'+', '.join(k+' = '+toml(v) for k,v in value.items())+'}'
+ return json.dumps(value,ensure_ascii=False)
+def validate(s):
+ if not isinstance(s,dict) or set(s)!=KEYS:raise ValueError('Получены неполные настройки ночного цвета.')
+ if s['mode'] not in ['off','always','times','sun']:raise ValueError('Неизвестный режим ночного цвета.')
+ if s['warmth'] not in ['custom','4500','4000','3500','2500']:raise ValueError('Неизвестная теплота экрана.')
+ night=s['temperature'] if s['warmth']=='custom' else int(s['warmth'])
+ if type(night) is not int or not 1000<=night<=9900:raise ValueError('Температура должна быть от 1000 до 9900 К.')
+ if type(s['day_temperature']) is not int or not night+100<=s['day_temperature']<=10000:
+  raise ValueError('Дневная температура должна быть выше ночной минимум на 100 К.')
+ for key in ('start_time','end_time','city','latitude','longitude'):
+  if not isinstance(s[key],str):raise ValueError('Недопустимое значение поля '+key)
+ if s['mode']=='times':
+  if not all(re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',s[k]) for k in ('start_time','end_time')):
+   raise ValueError('Укажите время полностью: часы и минуты, например 22:00 и 07:00.')
+  if s['start_time']==s['end_time']:raise ValueError('Время включения и выключения должно различаться.')
+ if s['mode']=='sun':
+  if len(s['city'])>200:raise ValueError('Название города слишком длинное.')
+  if bool(s['latitude'].strip())!=bool(s['longitude'].strip()):raise ValueError('Заполните обе координаты или оставьте обе пустыми.')
+  if s['latitude'].strip():
+   try:lat,lon=float(s['latitude']),float(s['longitude'])
+   except ValueError:raise ValueError('Координаты должны быть числами, например 50.45 и 30.52.')
+   if not (-90<=lat<=90 and -180<=lon<=180):raise ValueError('Широта: от −90 до 90; долгота: от −180 до 180.')
+ return night
 
-def main():
- if len(sys.argv)==1 or sys.argv[1]=='get':print(json.dumps(get(),ensure_ascii=False));return
- if sys.argv[1]=='temporary':cmd('nightlight-force-toggle');print('Временное ручное состояние переключено');return
- if sys.argv[1]!='save':raise ValueError('Неизвестная команда')
- data=validate(json.loads(sys.argv[2]))
+def desired(s,before):
+ night=validate(s)
+ n=dict(before['nightlight'],enabled=s['mode'] in ('times','sun'),force=s['mode']=='always',temperature_night=night,temperature_day=s['day_temperature'])
+ l=dict(before['location'])
+ if s['mode']=='times':l.update(custom_schedule=True,sunset=s['start_time'],sunrise=s['end_time'])
+ elif s['mode']=='sun':
+  l['custom_schedule']=False
+  if s['latitude'].strip():l.update(auto_locate=False,address='',latitude=float(s['latitude']),longitude=float(s['longitude']))
+  else:
+   l.pop('latitude',None);l.pop('longitude',None)
+   l.update(auto_locate=not bool(s['city'].strip()),address=s['city'].strip())
+ return {'nightlight':n,'location':l}
+def marker():return Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'noctalia-nightlight-controls/last-settings.json'
+def save_marker(s):
+ p=marker();p.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+ tmp=p.with_suffix('.tmp')
+ fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(s,f,ensure_ascii=False);f.flush();os.fsync(f.fileno())
+ tmp.replace(p)
+def apply_settings(s,seed=False):
+ validate(s)
  runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
  with (runtime/'noctalia-nightlight.lock').open('a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-  before=get()
+  old=json.loads(marker().read_text()) if marker().exists() else None
+  if old==s:return {'changed':False}
+  before=get();after=desired(s,before)
+  if seed:
+   if before!=after:raise ValueError('Начальные параметры не совпадают с текущим ночным цветом.')
+   save_marker(s);return {'changed':False}
   try:
-   # This is the existing shared solar schedule (also used by weather/theme auto).
-   cmd('config-set','location',toml(data['location']))
-   # Native CLI toggles are runtime overrides; changing both booleans clears them.
-   # One intermediate config, then the complete desired state, keeps native GUI and persistence aligned.
-   intermediate=dict(data['nightlight'],enabled=not data['nightlight']['enabled'],force=not data['nightlight']['force'])
-   cmd('config-set','nightlight',toml(intermediate))
-   cmd('config-set','nightlight',toml(data['nightlight']))
+   if after['location']!=before['location']:cmd('config-set','location',toml(after['location']))
+   mode_changed=old is None or s['mode']!=old['mode']
+   if mode_changed:
+    intermediate=dict(after['nightlight'],enabled=not after['nightlight']['enabled'],force=not after['nightlight']['force'])
+    cmd('config-set','nightlight',toml(intermediate))
+   if mode_changed or after['nightlight']!=before['nightlight']:cmd('config-set','nightlight',toml(after['nightlight']))
    actual=get()
-   if actual['nightlight']!=data['nightlight']:raise RuntimeError('Noctalia не подтвердила настройки температуры')
-  except Exception:
-   cmd('config-set','location',toml(before['location']))
-   cmd('config-set','nightlight',toml(before['nightlight']))
+   if actual!=after:raise RuntimeError('Noctalia не подтвердила новые настройки.')
+   save_marker(s)
+  except Exception as original:
+   errors=[]
+   for section in ('location','nightlight'):
+    try:cmd('config-set',section,toml(before[section]))
+    except Exception as e:errors.append(str(e))
+   if errors:raise RuntimeError(str(original)+'; восстановление: '+'; '.join(errors)) from original
    raise
- print(json.dumps(actual,ensure_ascii=False))
+ return {'changed':True}
+def main():
+ action=sys.argv[1] if len(sys.argv)>1 else 'get'
+ if action=='get':result=get()
+ elif action in ('apply-settings','seed'):result=apply_settings(json.loads(sys.argv[2]),seed=action=='seed')
+ else:raise ValueError('Неизвестное действие.')
+ print(json.dumps(result,ensure_ascii=False))
 if __name__=='__main__':
  try:main()
  except Exception as e:print(str(e),file=sys.stderr);sys.exit(1)
