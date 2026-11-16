@@ -1,0 +1,89 @@
+#!/usr/bin/python3
+"""Session-persistent main monitor 60 Hz toggle; never disables other outputs."""
+import fcntl,json,os,re,subprocess,sys,time
+from pathlib import Path
+ROOT=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
+STATE=ROOT/'main-monitor-rate.json'
+LUA=ROOT/'main-monitor-rate.lua'
+def cmd(*a):
+ p=subprocess.run(a,capture_output=True,text=True,timeout=8)
+ if p.returncode or p.stdout.lower().startswith('error:'):raise RuntimeError(p.stderr or p.stdout)
+ return p.stdout.strip()
+def monitors():return json.loads(cmd('hyprctl','-j','monitors'))
+def identity(m):return (m.get('description'),m.get('serial'))
+def choose(ms):
+ if not ms:raise RuntimeError('Нет включённых мониторов')
+ return max(ms,key=lambda m:('MSI MP252' in m.get('description',''),not m['name'].startswith(('eDP-','LVDS-')),m.get('focused',False)))
+def lua(v):
+ if isinstance(v,dict):return '{'+','.join('['+json.dumps(k)+']='+lua(x) for k,x in v.items())+'}'
+ return json.dumps(v,ensure_ascii=False)
+def atomic(p,s):
+ tmp=p.with_suffix('.tmp');tmp.write_text(s);tmp.chmod(0o600);tmp.replace(p)
+def publish(s):
+ if s:
+  atomic(LUA,'return '+lua({'signature':s['signature'],'monitors':{s['name']:s['mode']}})+'\n')
+ else:LUA.unlink(missing_ok=True)
+def apply(m,hz):
+ rule={'output':m['name'],'mode':f'{m["width"]}x{m["height"]}@{hz:.5f}','position':f'{m["x"]}x{m["y"]}','scale':m['scale'],'transform':m.get('transform',0)}
+ result=cmd('hyprctl','eval','hl.monitor('+lua(rule)+')')
+ if result!='ok':raise RuntimeError(result)
+ for _ in range(25):
+  current=next((x for x in monitors() if x['name']==m['name']),None)
+  if current and abs(current['refreshRate']-hz)<.6:return
+  time.sleep(.1)
+ raise RuntimeError('Монитор не подтвердил выбранную частоту')
+def commit(m, hz, new):
+ before={p:p.read_bytes() if p.exists() else None for p in (STATE,LUA)}
+ try:
+  apply(m,hz)
+  if new is None:STATE.unlink(missing_ok=True)
+  else:atomic(STATE,json.dumps(new))
+  publish(new)
+ except Exception as failure:
+  errors=[]
+  try:apply(m,m['refreshRate'])
+  except Exception as e:errors.append(str(e))
+  for p,data in before.items():
+   try:
+    if data is None:p.unlink(missing_ok=True)
+    else:atomic(p,data.decode())
+   except Exception as e:errors.append(str(e))
+  if errors:raise RuntimeError(str(failure)+'; откат: '+'; '.join(errors)) from failure
+  raise
+
+def status():
+ m=choose(monitors());s=json.loads(STATE.read_text()) if STATE.exists() else None
+ valid=bool(s and s['signature']==os.environ.get('HYPRLAND_INSTANCE_SIGNATURE') and tuple(s['identity'])==identity(m))
+ return m,s,valid
+
+def change(action):
+ m,s,valid=status()
+ if action=='status':print(json.dumps({'monitor':m['name'],'refresh':m['refreshRate'],'saved':valid}));return
+ eco=ROOT/'battery-eco/desktop.json'
+ if eco.exists():raise RuntimeError('Сначала выключите экономию: она управляет частотой экранов.')
+ if action=='restore' or (action=='toggle' and valid):
+  if not valid:raise RuntimeError('Для этого экрана нет сохранённой частоты')
+  # Preserve a deliberate subsequent resolution change; cannot use its old mode.
+  if 'width' in s and (s['width'],s['height'])!=(m['width'],m['height']):raise RuntimeError('Разрешение изменилось; прежний режим не применён.')
+  commit(m,s['refresh'],None);return
+ rates=[]
+ for mode in m.get('availableModes',[]):
+  match=re.fullmatch(r'(\d+)x(\d+)@([\d.]+)Hz',mode)
+  if match and (int(match[1]),int(match[2]))==(m['width'],m['height']) and abs(float(match[3])-60)<.6:rates.append(float(match[3]))
+ if not rates:raise RuntimeError('Экран не сообщает режим 60 Гц при текущем разрешении')
+ target=min(rates,key=lambda x:abs(x-60))
+ new=dict(s) if valid else {'signature':os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'),'identity':identity(m),'refresh':m['refreshRate']}
+ new.update(name=m['name'],width=m['width'],height=m['height'],mode=f'{m["width"]}x{m["height"]}@{target:.5f}')
+ commit(m,target,new)
+
+def main():
+ action=sys.argv[1] if len(sys.argv)>1 else 'toggle'
+ if action not in ('toggle','set','restore','status'):raise RuntimeError('Неизвестная команда')
+ if action=='status':change(action);return
+ with (ROOT/'display-power.lock').open('a') as lock:
+  try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  except BlockingIOError:raise RuntimeError('Другой режим уже переключается. Дождитесь завершения.')
+  change(action)
+if __name__=='__main__':
+ try:main()
+ except Exception as e:print(str(e),file=sys.stderr);sys.exit(1)

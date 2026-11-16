@@ -1,0 +1,21 @@
+id = "ch3l1k/system-controls"
+name = "Скрипты системы"
+version = "1.0.0"
+plugin_api = 26
+author = "Ch3L1k"
+license = "MIT"
+icon = "adjustments"
+description = "Мониторы, экономия энергии и повседневные действия"
+dependencies = ["python", "hyprctl", "kitty"]
+[[panel]]
+id = "main"
+entry = "panel.luau"
+width = 620
+height = 720
+placement = "attached"
+position = "top_center"
+keyboard_focus = "on_demand"
+
+[[widget]]
+id = "button"
+entry = "widget.luau"

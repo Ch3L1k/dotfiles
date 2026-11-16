@@ -1,0 +1,50 @@
+#!/usr/bin/python3
+import json, os, subprocess, sys
+from pathlib import Path
+BIN=Path.home()/'.local/bin'
+def run(args):
+    p=subprocess.run(args,text=True,capture_output=True,timeout=180)
+    if p.returncode: raise RuntimeError(p.stderr.strip() or p.stdout.strip())
+    return p.stdout.strip()
+def actions(eco):
+    return [
+      ('eco','Питание','battery-eco','Экономия батареи','Без пароля · профиль питания, яркость и эффекты','Выключить' if eco else 'Включить',[str(BIN/'battery-eco'),'toggle']),
+      ('power-status','Питание','activity','Состояние энергосбережения','Профиль питания и состояние батареи','Проверить',[str(BIN/'battery-eco'),'status']),
+      ('main60','Мониторы','refresh','Основной монитор · 60 Гц','Меняет только частоту · повторно возвращает прежнюю','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
+      ('external','Мониторы','device-desktop','Только внешний · 60 Гц','Повторное нажатие возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-60']),
+      ('laptop','Мониторы','device-laptop','Только ноутбук / оба экрана','Переключение с сохранением расположения рабочих столов','Переключить',[str(BIN/'toggle-main-monitor')]),
+      ('restore','Мониторы','devices','Вернуть раскладку мониторов','Восстановить сохранённые экраны и их режимы','Вернуть',[str(BIN/'toggle-main-monitor'),'--restore']),
+      ('record','Инструменты','video','Запись экрана','Область, качество, частота кадров и звук','Открыть',['noctalia','msg','panel-toggle','4el1k/record-controls:main']),
+      ('blur','Инструменты','eye-off','Приватность вебкамеры','Переключить сильное размытие в OBS · Alt + Z','Переключить',[str(BIN/'obs-camera-blur'),'toggle']),
+      ('btop','Инструменты','chart-bar','Монитор ресурсов','Показать / скрыть btop','Открыть',[str(BIN/'toggle-special-app'),'btop']),
+      ('autoclicker','Инструменты','mouse','Автокликер','Настройки и управление автоматическими нажатиями','Открыть',['noctalia','msg','settings-open-plugin','amirfarzamnia/autoclicker']),
+      ('layout','Инструменты','keyboard','Русский / английский','Повседневное переключение раскладки','Переключить',[str(BIN/'switch-desktop-language'),'toggle']),
+    ]
+def main():
+    data=json.loads(run([str(BIN/'battery-eco'),'status','--json']))
+    eco=data['active']
+    pending=data['pending']
+    rows=actions(eco)
+    if pending:
+        rows[0]=(*rows[0][:5], 'Восстановить', rows[0][-1])
+    if sys.argv[1]=='run':
+        action=next((a for a in rows if a[0]==sys.argv[2]),None)
+        if not action: raise RuntimeError('Неизвестное действие')
+        if action[-1][0]=='kitty': subprocess.Popen(action[-1],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        else:
+            output=run(action[-1])
+            if output: print(output)
+    else:
+        profile={'power-saver':'Энергосбережение','balanced':'Сбалансированный','performance':'Производительность'}.get(data['profile'],data['profile'] or 'Недоступен')
+        summary=('Нужно завершить восстановление' if pending else 'Экономия включена' if eco else 'Обычный режим')+' · '+profile
+        summary+='\n'+' · '.join(f'{m["name"]}: {m["refresh"]:.0f} Гц' for m in data['monitors'])
+        if data['issues']: summary+='\n'+data['issues'][0]
+        items=[dict(zip(['id','group','icon','title','description','button'],a[:6])) for a in rows]
+        for item in items:
+            if item['id']=='main60' and (eco or pending):
+                item['enabled']=False
+                item['description']='Частотой сейчас управляет режим экономии'
+        print(json.dumps({'eco':eco,'summary':summary,'actions':items},ensure_ascii=False))
+if __name__=='__main__':
+    try: main()
+    except Exception as e: print(str(e),file=sys.stderr);sys.exit(1)
