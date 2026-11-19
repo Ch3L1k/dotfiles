@@ -112,7 +112,7 @@ def snapshot(repo, home):
                 if not ("@HOME@/Documents/Codex/" in line and
                         ("wplace-side-button.lua" in line or "start-firefox-friend.py" in line))
                 and line.strip() != "-- Forward side button as Space in the dedicated Wplace Firefox only."
-            )
+            ).rstrip("\n") + "\n"
         if name == "config/hypr/config/autostart.lua":
             text = "\n".join(line for line in text.splitlines() if "xhost +SI:localuser:root" not in line) + "\n"
         if name == "scripts/steam":

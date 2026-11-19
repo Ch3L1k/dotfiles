@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,4 +32,23 @@ class Installer(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    h=Path(d);r=self.invoke(h,'--apply','--component','unknown')
    self.assertNotEqual(r.returncode,0);self.assertEqual(list(h.iterdir()),[])
+ def test_all_installs_transitive_hyprland_config_modules(self):
+  require = re.compile(r"""\brequire\s*\(?\s*(["'])(config\.[\w.-]+)\1""")
+  with tempfile.TemporaryDirectory() as tmp:
+   home = Path(tmp)
+   result = self.invoke(home, '--apply', '--component', 'all')
+   self.assertEqual(result.returncode, 0, result.stderr)
+   root = home / '.config/hypr'
+   pending = [root / 'hyprland.lua']
+   visited = set()
+   while pending:
+    source = pending.pop()
+    if source in visited:
+     continue
+    visited.add(source)
+    for line in source.read_text().splitlines():
+     for _, module in require.findall(line.partition('--')[0]):
+      dependency = root / (module.replace('.', '/') + '.lua')
+      self.assertTrue(dependency.is_file(), f'{source.relative_to(root)} requires missing {module}')
+      pending.append(dependency)
 if __name__=='__main__':unittest.main()
