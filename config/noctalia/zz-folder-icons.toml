@@ -1,3 +1,6 @@
-# Run after Noctalia has generated the terminal palette.
+# Runs after the applications’ palette templates have been applied.
 [hooks]
-colors_changed = "@HOME@/.local/bin/noctalia-folder-icons"
+colors_changed = [
+    "/usr/bin/hyprctl eval 'if package.loaded.noctalia and package.preload.noctalia then package.preload.noctalia().apply_theme() end'",
+    "@HOME@/.local/bin/noctalia-folder-icons"
+]

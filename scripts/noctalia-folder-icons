@@ -5,6 +5,7 @@ import fcntl
 import os
 import re
 import subprocess
+import time
 
 h = Path.home()
 state = h / '.local/state/noctalia-folder-icons'
@@ -73,6 +74,30 @@ def update():
     subprocess.run(['gsettings', 'set', 'org.gnome.desktop.interface', 'icon-theme', target], check=True)
     print('Soft folder palette synchronized:', accent, target)
 
-with (state / 'update.lock').open('w') as lock:
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    update()
+def refresh_after_selection():
+    # Changing the GTK theme invalidates every icon consumer, including both bars.
+    # One worker waits for selections to settle and reads the newest generated colors.
+    with (state / 'request.lock').open('a+') as request, (state / 'update.lock').open('a') as worker:
+        fcntl.flock(request, fcntl.LOCK_EX)
+        request.seek(0)
+        request.truncate()
+        request.write(str(time.monotonic() + 2.0))
+        request.flush()
+        try:
+            fcntl.flock(worker, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+
+        while True:
+            request.seek(0)
+            remaining = float(request.read()) - time.monotonic()
+            if remaining <= 0:
+                update()
+                return
+            fcntl.flock(request, fcntl.LOCK_UN)
+            time.sleep(remaining)
+            fcntl.flock(request, fcntl.LOCK_EX)
+
+
+if __name__ == '__main__':
+    refresh_after_selection()

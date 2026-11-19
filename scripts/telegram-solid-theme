@@ -1,11 +1,16 @@
 #!/usr/bin/python
 """Bundle Noctalia colors with distinct chat canvas and message surfaces."""
 from pathlib import Path
+import fcntl
+import hashlib
 import io
 import os
 import re
 import struct
 import subprocess
+import sys
+import tempfile
+import time
 import tomllib
 import zipfile
 import zlib
@@ -27,12 +32,20 @@ def solid_png(hex_color):
 
 
 def atomic_write(path, data):
-    temporary = path.with_name(path.name + ".solid-tmp")
-    with temporary.open("wb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
-    temporary.replace(path)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".solid-", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def cache_folder():
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return cache / "noctalia"
 
 
 def chat_background(hex_color):
@@ -54,6 +67,15 @@ def chat_background(hex_color):
         except (OSError, ValueError):
             pass
     if wallpaper and wallpaper.is_file():
+        info = wallpaper.stat()
+        identity = (str(wallpaper), info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size, hex_color, 1)
+        key = hashlib.sha256(repr(identity).encode()).hexdigest()
+        cache = cache_folder() / "telegram-backgrounds"
+        cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+        cached = cache / (key + ".png")
+        if cached.is_file():
+            cached.touch()
+            return cached.read_bytes()
         filters = (
             "scale=1280:720:force_original_aspect_ratio=increase,"
             "crop=1280:720,gblur=sigma=30:steps=2,"
@@ -62,11 +84,16 @@ def chat_background(hex_color):
         )
         try:
             result = subprocess.run([
-                "ffmpeg", "-nostdin", "-v", "error", "-i", str(wallpaper),
+                "ffmpeg", "-nostdin", "-v", "error",
+                "-filter_threads", "1", "-threads", "1", "-i", str(wallpaper),
                 "-vf", filters, "-frames:v", "1", "-f", "image2pipe",
                 "-c:v", "png", "-threads", "1", "pipe:1",
             ], capture_output=True, check=True, timeout=15)
             if result.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                atomic_write(cached, result.stdout)
+                entries = sorted(cache.glob("*.png"), key=lambda p: p.stat().st_mtime_ns, reverse=True)
+                for old in entries[12:]:
+                    old.unlink(missing_ok=True)
                 return result.stdout
         except (OSError, subprocess.SubprocessError):
             pass
@@ -134,11 +161,15 @@ def contrast_palette(text):
     return text.encode("utf-8"), canvas, updates
 
 
-def main():
+def update(unchanged=lambda: True):
     folder = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "telegram-desktop/themes"
     theme = folder / "noctalia.tdesktop-theme"
-    original = theme.read_bytes()
-    if zipfile.is_zipfile(io.BytesIO(original)):
+    folder.mkdir(parents=True, exist_ok=True)
+    original = theme.read_bytes() if theme.is_file() else b""
+    raw = cache_folder() / "telegram-source.tdesktop-theme"
+    if raw.is_file():
+        palette = raw.read_bytes()
+    elif zipfile.is_zipfile(io.BytesIO(original)):
         with zipfile.ZipFile(io.BytesIO(original)) as archive:
             source = "noctalia-source.tdesktop-theme"
             palette = archive.read(source if source in archive.namelist() else "colors.tdesktop-theme")
@@ -156,6 +187,9 @@ def main():
             entry.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(entry, data)
     packed = output.getvalue()
+    # A newer palette may have arrived while ffmpeg was running.
+    if not unchanged():
+        return
     if packed != original:
         atomic_write(theme, packed)
     image = folder / "noctalia-background.png"
@@ -165,5 +199,55 @@ def main():
           "outgoing:", surfaces["msgOutBg"])
 
 
+QUIET_SECONDS = 0.5
+
+
+def worker(lock, request):
+    os.nice(8)
+    while True:
+        stamp = request.stat().st_mtime_ns
+        time.sleep(QUIET_SECONDS)
+        if request.stat().st_mtime_ns != stamp:
+            continue
+        update(lambda: request.stat().st_mtime_ns == stamp)
+        # Every requester marks the new revision before trying the lock.
+        # Recheck after unlocking to cover the last request arriving during exit.
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        if request.stat().st_mtime_ns == stamp:
+            return
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+
+
+def queue():
+    cache = cache_folder()
+    cache.mkdir(parents=True, exist_ok=True)
+    request = cache / "telegram-theme.request"
+    request.touch(mode=0o600)
+    with (cache / "telegram-theme.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        with (cache / "telegram-theme-last.log").open("w") as log:
+            subprocess.Popen([sys.executable, __file__, "--worker", str(lock.fileno())],
+                             pass_fds=(lock.fileno(),), stdin=subprocess.DEVNULL,
+                             stdout=log, stderr=log, start_new_session=True)
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--queue"]:
+        queue()
+    elif len(sys.argv) == 3 and sys.argv[1] == "--worker":
+        with os.fdopen(int(sys.argv[2]), "a") as held:
+            worker(held, cache_folder() / "telegram-theme.request")
+    elif len(sys.argv) == 1:
+        cache = cache_folder()
+        cache.mkdir(parents=True, exist_ok=True)
+        with (cache / "telegram-theme.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            update()
+    else:
+        sys.exit("Usage: telegram-solid-theme [--queue]")
