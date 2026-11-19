@@ -3,5 +3,8 @@
 
 hl.on("hyprland.start", function ()
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
-    hl.exec_cmd("noctalia")
+    hl.exec_cmd([[
+        launcher="$HOME/.local/opt/noctalia-ascii/start"
+        if [ -x "$launcher" ]; then exec "$launcher"; else exec /usr/bin/noctalia; fi
+    ]])
 end)
