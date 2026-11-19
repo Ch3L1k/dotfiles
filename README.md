@@ -26,7 +26,7 @@ My appearance settings, shortcuts and helpers, saved here to restore my setup.
 
 ## My setup
 
-CachyOS, Hyprland 0.56.2 (Lua API), native Noctalia v5.4.0.
+Verified on CachyOS with Hyprland 0.57.2 (Lua API) and Noctalia v5.5.0.
 The external MSI MP252 E2 is identified by its EDID. The laptop panel is detected
 on an eDP or LVDS connector. Run `hyprctl monitors all` to see the current names.
 Workspaces 1–8 use the external display, and 9–10 use the laptop.
