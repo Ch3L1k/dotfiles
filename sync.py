@@ -18,7 +18,7 @@ SECTIONS = {
     "desktop_widgets", "dock", "nightlight", "lockscreen", "lockscreen_widgets", "notification",
     "osd", "plugin_settings", "plugins", "shell", "system", "theme", "widget",
 }
-PRIVATE_KEYS = re.compile(r"password|secret|api.?key|access.?token|refresh.?token|authorization|cookie|latitude|longitude|avatar_path|account_id|user_id|guild_id|channel_id|geolocation|coordinates", re.I)
+PRIVATE_KEYS = re.compile(r"password|passwd|secret|api.?key|token|^city$|authorization|cookie|latitude|longitude|avatar_path|account_id|user_id|guild_id|channel_id|geolocation|coordinates", re.I)
 CREDENTIALS = re.compile(r"gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}")
 
 
@@ -92,7 +92,7 @@ def snapshot(repo, home):
             source = home / ".local/bin" / Path(*parts)
         else:
             source = home / ".local/share/noctalia/plugins" / Path(*parts)
-        if source.is_symlink():
+        if source.is_symlink() or any(parent.is_symlink() for parent in source.parents if parent.is_relative_to(home) and parent != home):
             raise ValueError("Review the linked config before syncing: " + name)
         if source.exists() and not source.is_file():
             raise ValueError("Expected a regular config file: " + name)
@@ -105,6 +105,14 @@ def snapshot(repo, home):
             if source.stat().st_size > 2_000_000:
                 raise ValueError("Config unexpectedly exceeds 2 MB: " + name)
             text = source.read_text().replace(str(home), "@HOME@").replace("4EL1k", "Ch3L1k").replace("4el1k/", "ch3l1k/")
+        # These two bindings belong to a local Firefox workspace, outside this backup.
+        if name in ("config/hypr/hyprland.lua", "config/hypr/config/binds.lua"):
+            text = "".join(
+                line for line in text.splitlines(keepends=True)
+                if not ("@HOME@/Documents/Codex/" in line and
+                        ("wplace-side-button.lua" in line or "start-firefox-friend.py" in line))
+                and line.strip() != "-- Forward side button as Space in the dedicated Wplace Firefox only."
+            )
         if name == "config/hypr/config/autostart.lua":
             text = "\n".join(line for line in text.splitlines() if "xhost +SI:localuser:root" not in line) + "\n"
         if name == "scripts/steam":

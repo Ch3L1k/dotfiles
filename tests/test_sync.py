@@ -48,6 +48,18 @@ class SyncTests(unittest.TestCase):
             sync.sync(self.repo, self.home, apply=True)
         self.assertEqual(self.target.read_text(), "manual change\n")
 
+    def test_noctalia_private_fields_are_omitted_from_nested_tables(self):
+        settings = {"plugin": {"token": "example", "city": "Example", "enabled": True}}
+        self.assertEqual(sync.clean(settings, self.home), {"plugin": {"enabled": True}})
+
+    def test_linked_parent_stops_snapshot_before_copying(self):
+        original = self.source.parent
+        moved = self.root / "elsewhere"
+        original.rename(moved)
+        original.symlink_to(moved, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "linked config"):
+            sync.snapshot(self.repo, self.home)
+
     def test_credential_guard_stops_before_any_write(self):
         before = self.target.read_bytes()
         self.source.write_text("token = 'ghp_" + "A" * 40 + "'\n")
