@@ -12,6 +12,9 @@ local info={recording=false,pending=false,available=true,folder=noctalia.expandP
 local busy=false
 local checking=false
 local shown=false
+local generation=0
+local prefsLoaded=false
+local prefsEdited=false
 local errorText=""
 local ticks=0
 local function index(values,value)
@@ -22,10 +25,10 @@ local function active() return info.recording or info.pending end
 local function field(label,options,values,key)
   return ui.row({gap=16,align="center"},{
     ui.label({text=label,width=138,color="on_surface_variant",fontSize=14}),
-    ui.select({key=key,options=options,selectedIndex=index(values,prefs[key]),flexGrow=1,enabled=not active() and not busy,
+    ui.select({key=key,options=options,selectedIndex=index(values,prefs[key]),flexGrow=1,enabled=prefsLoaded and not active() and not busy,
       onChange=function(value)
         local n=tonumber(value)
-        if n and values[n+1]~=nil then prefs[key]=values[n+1] end
+        if prefsLoaded and n and values[n+1]~=nil and prefs[key]~=values[n+1] then prefs[key]=values[n+1];prefsEdited=true end
       end}),
   })
 end
@@ -50,7 +53,9 @@ function render()
       field("Звук",{"Без звука","Звук компьютера","Микрофон","Компьютер + микрофон"},audio,"audio"),
       field("Задержка",{"Без задержки","3 секунды","5 секунд"},delays,"delay"),
       ui.row({gap=16,align="center"},{ui.label({text="Показывать курсор",flexGrow=1,color="on_surface_variant",fontSize=14}),
-        ui.toggle({checked=prefs.cursor,enabled=not active() and not busy,onChange=function(value) prefs.cursor=value=="true" end})}),
+        ui.toggle({checked=prefs.cursor,enabled=prefsLoaded and not active() and not busy,onChange=function(value)
+          if prefsLoaded and prefs.cursor~=(value=="true") then prefs.cursor=value=="true";prefsEdited=true end
+        end})}),
       ui.label({text=errorText~="" and errorText or (info.error or ""),color="error",fontSize=12,maxLines=3,visible=errorText~="" or (info.error or "")~=""}),
     }),
     ui.row({gap=8,align="center"},{
@@ -60,39 +65,41 @@ function render()
     ui.row({gap=10},{
       ui.button({text=active() and "Остановить и сохранить" or (busy and "Подготовка…" or "Начать запись"),
         glyph=active() and "player-stop-filled" or "player-record",variant=active() and "destructive" or "primary",
-        flexGrow=1,enabled=not busy and info.available,onClick="record"}),
+        flexGrow=1,enabled=prefsLoaded and not busy and info.available,onClick="record"}),
     }),
   }))
 end
-local function refresh(loadPrefs)
+local function refresh()
   if checking then return end
   checking=true
+  local requested=generation
   noctalia.runAsync({helper,"get"},function(result)
+    if requested~=generation then return end
     checking=false
     if result.exitCode==0 then
       local data=noctalia.json.decode(result.stdout)
       if type(data)=="table" then
         info=data
-        if loadPrefs and type(data.prefs)=="table" then prefs=data.prefs end
+        if not prefsLoaded and type(data.prefs)=="table" then prefs=data.prefs;prefsLoaded=true end
       end
     else errorText=result.stderr end
     if shown then render() end
   end,5000)
 end
 function record()
-  if busy then return end
+  if busy or not prefsLoaded then return end
   busy=true;errorText="";render()
   if active() then
     noctalia.runAsync({helper,"stop"},function(result)
       busy=false
       if result.exitCode~=0 then errorText=result.stderr end
-      refresh(false)
+      refresh()
     end,10000)
   else
     local data=noctalia.json.encode(prefs)
     local ok=noctalia.runAsync({"systemd-run","--user","--collect","--quiet","--unit=noctalia-record-start",helper,"start",data},function(result)
       busy=false
-      if result.exitCode==0 then panel.close()
+      if result.exitCode==0 then prefsEdited=false;panel.close()
       else errorText=result.stderr;render() end
     end,10000)
     if not ok then busy=false;errorText="Не удалось запустить запись";render() end
@@ -104,16 +111,19 @@ function advanced()
   noctalia.runAsync({"noctalia","msg","settings-open-plugin","noctalia/screen_recorder"})
 end
 function onOpen()
+  generation+=1;checking=false;prefsLoaded=false;prefsEdited=false
   shown=true;busy=false;ticks=0
-  render();refresh(true)
+  render();refresh()
   panel.setWantsSecondTicks(true)
 end
 function onClose()
-  shown=false
-  noctalia.runAsync({helper,"save",noctalia.json.encode(prefs)})
+  shown=false;generation+=1
+  if prefsLoaded and prefsEdited then
+    noctalia.runAsync({helper,"save",noctalia.json.encode(prefs)})
+  end
 end
 function update()
   if not shown then return end
   ticks+=1
-  if ticks%2==0 then refresh(false) end
+  if ticks%2==0 then refresh() end
 end

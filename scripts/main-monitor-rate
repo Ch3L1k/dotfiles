@@ -21,7 +21,7 @@ def atomic(p,s):
  tmp=p.with_suffix('.tmp');tmp.write_text(s);tmp.chmod(0o600);tmp.replace(p)
 def publish(s):
  if s:
-  atomic(LUA,'return '+lua({'signature':s['signature'],'monitors':{s['name']:s['mode']}})+'\n')
+  atomic(LUA,'return '+lua({'signature':s['signature'],'changed_at':s.get('changed_at',0),'monitors':{s['name']:s['mode']}})+'\n')
  else:LUA.unlink(missing_ok=True)
 def apply(m,hz):
  rule={'output':m['name'],'mode':f'{m["width"]}x{m["height"]}@{hz:.5f}','position':f'{m["x"]}x{m["y"]}','scale':m['scale'],'transform':m.get('transform',0)}
@@ -61,19 +61,29 @@ def change(action):
  if action=='status':print(json.dumps({'monitor':m['name'],'refresh':m['refreshRate'],'saved':valid}));return
  eco=ROOT/'battery-eco/desktop.json'
  if eco.exists():raise RuntimeError('Сначала выключите экономию: она управляет частотой экранов.')
- if action=='restore' or (action=='toggle' and valid):
+ if action=='restore' or (action=='toggle' and valid and abs(m['refreshRate']-60)<.6):
   if not valid:raise RuntimeError('Для этого экрана нет сохранённой частоты')
   # Preserve a deliberate subsequent resolution change; cannot use its old mode.
   if 'width' in s and (s['width'],s['height'])!=(m['width'],m['height']):raise RuntimeError('Разрешение изменилось; прежний режим не применён.')
-  commit(m,s['refresh'],None);return
+  commit(m,s['refresh'],s.get('previous_override'));return
  rates=[]
  for mode in m.get('availableModes',[]):
   match=re.fullmatch(r'(\d+)x(\d+)@([\d.]+)Hz',mode)
   if match and (int(match[1]),int(match[2]))==(m['width'],m['height']) and abs(float(match[3])-60)<.6:rates.append(float(match[3]))
  if not rates:raise RuntimeError('Экран не сообщает режим 60 Гц при текущем разрешении')
  target=min(rates,key=lambda x:abs(x-60))
- new=dict(s) if valid else {'signature':os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'),'identity':identity(m),'refresh':m['refreshRate']}
- new.update(name=m['name'],width=m['width'],height=m['height'],mode=f'{m["width"]}x{m["height"]}@{target:.5f}')
+ if not valid and abs(m['refreshRate']-target)<.1:
+  return
+ if not valid and s and s.get('signature')==os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'):
+  raise RuntimeError('Для другого экрана сохранена частота. Верните его в раскладку перед изменением.')
+ if valid and abs(m['refreshRate']-target)<.6:
+  new=dict(s)
+ else:
+  new={'signature':os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'),'identity':identity(m),'refresh':m['refreshRate']}
+  if valid:
+   # The single-screen preset temporarily superseded the prior manual override.
+   new['previous_override']=s
+ new.update(name=m['name'],width=m['width'],height=m['height'],mode=f'{m["width"]}x{m["height"]}@{target:.5f}',changed_at=time.monotonic_ns())
  commit(m,target,new)
 
 def main():

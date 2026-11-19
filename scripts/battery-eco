@@ -249,37 +249,55 @@ def write_overrides(state):
 
 
 def restore(state):
-    # A failed restore must not re-enable economy during a later compositor reload.
+    # An interrupted restore must remain recoverable even before the first setter.
+    state.update(active=False, phase='restore-pending')
+    save(state)
     override_path().unlink(missing_ok=True)
     errors = []
     orig, applied = state['original'], state['applied']
-    def attempt(label, fn):
+    def release(section, key, label, restore_one):
         try:
-            fn()
+            restore_one()
         except Exception as exc:
             errors.append(f'{label}: {exc}')
+            return
+        # A later retry owns only unfinished fields, even if the user changes an
+        # already restored setting back to the value used by economy.
+        if section == 'profile':
+            del applied['profile']
+        else:
+            del applied[section][key]
+        save(state)
+
     if 'profile' in applied:
         def profile():
             if read_profile() == applied['profile']:
                 set_profile(orig['profile'])
-        attempt('Профиль', profile)
+        release('profile', None, 'Профиль', profile)
     devices = brightness_devices()
-    for name, value in applied['brightness'].items():
-        if name in devices and devices[name]['value'] == value:
-            attempt(name, lambda n=name: set_brightness(n, orig['brightness'][n]))
+    for name, value in list(applied['brightness'].items()):
+        def brightness():
+            if name in devices and devices[name]['value'] == value:
+                set_brightness(name, orig['brightness'][name])
+        release('brightness', name, name, brightness)
     if state['signature'] == session():
-        for name, value in applied['visuals'].items():
-            def visual(n=name, v=value):
-                if read_visual(n) == v:
-                    set_visual(n, orig['visuals'][n])
-            attempt(name, visual)
-        try:
-            current = {monitor_key(m): m for m in monitors()}
-            for key, value in applied['monitors'].items():
-                if key in current and same_mode(monitor_value(current[key]), value):
-                    attempt(current[key]['name'], lambda k=key: set_monitor(current[k], orig['monitors'][k]))
-        except Exception as exc:
-            errors.append(f'Мониторы: {exc}')
+        for name, value in list(applied['visuals'].items()):
+            def visual():
+                if read_visual(name) == value:
+                    set_visual(name, orig['visuals'][name])
+            release('visuals', name, name, visual)
+        if applied['monitors']:
+            try:
+                current = {monitor_key(m): m for m in monitors()}
+            except Exception as exc:
+                errors.append(f'Мониторы: {exc}')
+            else:
+                for key, value in list(applied['monitors'].items()):
+                    monitor = current.get(key)
+                    def restore_monitor():
+                        if monitor and same_mode(monitor_value(monitor), value):
+                            set_monitor(monitor, orig['monitors'][key])
+                    release('monitors', key, monitor['name'] if monitor else key, restore_monitor)
     if errors:
         state.update(active=False, phase='restore-pending', errors=errors)
         save(state)
@@ -348,13 +366,50 @@ def disable():
         override_path().unlink(missing_ok=True)
 
 
-def reconcile():
+def remember_layout(state, normal_modes):
+    # A manual layout selection establishes the frequency to restore after
+    # economy ends. Hyprland may already have applied the economy frequency.
+    if not isinstance(normal_modes, dict):
+        raise ValueError('Ожидались режимы мониторов по имени выхода.')
+    updates = []
+    for monitor in monitors():
+        name = monitor['name']
+        if name not in normal_modes:
+            continue
+        mode = normal_modes[name]
+        if not isinstance(mode, dict):
+            raise ValueError(f'Недопустимый режим {name}.')
+        width, height, refresh = (mode.get(key) for key in ('width', 'height', 'refresh'))
+        if (width, height) != (monitor['width'], monitor['height']):
+            # A concurrent resolution change takes precedence.
+            continue
+        if not isinstance(refresh, (int, float)) or isinstance(refresh, bool) or not 0 < refresh < 10000:
+            raise ValueError(f'Недопустимая частота {name}.')
+        prefix = f'{width}x{height}@'
+        rates = [float(rate.removesuffix('Hz').removeprefix(prefix))
+                 for rate in monitor.get('availableModes', []) if rate.startswith(prefix) and rate.endswith('Hz')]
+        if not any(abs(rate - refresh) < .6 for rate in rates):
+            raise ValueError(f'{name} не подтверждает режим {refresh:g} Гц.')
+        updates.append((monitor, {'width': width, 'height': height, 'refresh': refresh}))
+    for monitor, mode in updates:
+        key = monitor_key(monitor)
+        state['original']['monitors'][key] = mode
+        rate = economy_mode(monitor)
+        live = monitor_value(monitor)
+        if rate is not None and abs(live['refresh'] - rate) < .1:
+            state['applied']['monitors'][key] = live
+    save(state)
+
+
+def reconcile(normal_modes=None):
     state = load()
     if not state or not state['active'] or state['signature'] != session():
         return
     # This explicit call follows a compositor reload/display-layout transition.
     # Brightness/profile are intentionally left alone, since the user can change them.
     try:
+        if normal_modes:
+            remember_layout(state, normal_modes)
         apply_display(state)
         write_overrides(state)
         state['errors'] = []
@@ -374,14 +429,14 @@ def status():
         result['pending'] = True
         result['issues'].append(str(exc))
     if state:
-        result['active'] = bool(state.get('active'))
+        result['active'] = bool(state.get('active')) and state['signature'] == session()
         result['pending'] = not result['active']
         result['issues'] += state.get('errors', [])
         if state['signature'] != session():
             result['issues'].append('Сеанс Hyprland изменился; параметры старого рабочего стола не будут восстановлены.')
     try:
         result['profile'] = read_profile()
-        if state and state['active'] and result['profile'] != 'power-saver':
+        if result['active'] and result['profile'] != 'power-saver':
             result['issues'].append('Профиль питания изменён вручную.')
     except Exception as exc:
         result['issues'].append(str(exc))
@@ -428,7 +483,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['on', 'off', 'toggle', 'status', 'reconcile'], nargs='?', default='status')
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--normal-modes', type=json.loads, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.normal_modes is not None and (args.action != 'reconcile' or not isinstance(args.normal_modes, dict)):
+        parser.error('--normal-modes требует reconcile и объект JSON')
     if os.geteuid() == 0:
         raise RuntimeError('Этот скрипт запускается обычным пользователем.')
     if args.action != 'status':
@@ -436,7 +494,12 @@ def main():
             action = args.action
             if action == 'toggle':
                 action = 'off' if state_path().exists() else 'on'
-            {'on': enable, 'off': disable, 'reconcile': reconcile}[action]()
+            if action == 'reconcile':
+                reconcile(args.normal_modes)
+            elif action == 'on':
+                enable()
+            else:
+                disable()
     data = status()
     if args.json:
         print(json.dumps(data, ensure_ascii=False))
@@ -452,8 +515,11 @@ def main():
             if epp:
                 print('Предпочтение CPU: ' + ', '.join(epp))
         for b in data['battery']:
-            print(f"Батарея: {b['capacity']}%, {b['status']}")
-            if 'watts' in b:
+            phase = b['status']
+            caption = {'Charging':'заряжается', 'Discharging':'разряжается', 'Not charging':'не заряжается',
+                       'Full':'заряжена', 'Unknown':'состояние неизвестно'}.get(phase, phase)
+            print(f"Батарея: {b['capacity']}%, {caption}")
+            if 'watts' in b and phase in ('Charging', 'Discharging'):
                 print(('Мощность зарядки' if b['status'] == 'Charging' else 'Мощность разряда') + f": {b['watts']:.1f} Вт")
         for issue in data['issues']:
             print('Внимание: ' + issue)

@@ -11,8 +11,9 @@ def actions(eco):
       ('eco','Питание','battery-eco','Экономия батареи','Без пароля · профиль питания, яркость и эффекты','Выключить' if eco else 'Включить',[str(BIN/'battery-eco'),'toggle']),
       ('power-status','Питание','activity','Состояние энергосбережения','Профиль питания и состояние батареи','Проверить',[str(BIN/'battery-eco'),'status']),
       ('nightlight','Мониторы','moon-stars','Ночной цвет','Температура экрана и расписание','Настроить',['noctalia','msg','settings-open-plugin','ch3l1k/nightlight-controls']),
-      ('main60','Мониторы','refresh','Основной монитор · 60 Гц','Меняет только частоту · повторно возвращает прежнюю','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
-      ('external','Мониторы','device-desktop','Только внешний · 60 Гц','Повторное нажатие возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-60']),
+      ('main60','Мониторы','refresh','Основной · 60 Гц, только частота','Сохраняет включённые экраны · повторно возвращает частоту','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
+      ('external','Мониторы','device-desktop','Только основной монитор · 60 Гц','Выключает экран ноутбука · повторно возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-60']),
+      ('external120','Мониторы','device-desktop','Только основной монитор · 120 Гц','Выключает экран ноутбука · повторно возвращает прежнюю раскладку','Переключить',[str(BIN/'toggle-main-monitor'),'--external-120']),
       ('laptop','Мониторы','device-laptop','Только ноутбук / оба экрана','Переключение с сохранением расположения рабочих столов','Переключить',[str(BIN/'toggle-main-monitor')]),
       ('restore','Мониторы','devices','Вернуть раскладку мониторов','Восстановить сохранённые экраны и их режимы','Вернуть',[str(BIN/'toggle-main-monitor'),'--restore']),
       ('record','Инструменты','video','Запись экрана','Область, качество, частота кадров и звук','Открыть',['noctalia','msg','panel-toggle','ch3l1k/record-controls:main']),
@@ -42,7 +43,7 @@ def main():
         if data['issues']: summary+='\n'+data['issues'][0]
         items=[dict(zip(['id','group','icon','title','description','button'],a[:6])) for a in rows]
         for item in items:
-            if item['id']=='main60' and (eco or pending):
+            if item['id'] in ('main60','external120') and (eco or pending):
                 item['enabled']=False
                 item['description']='Частотой сейчас управляет режим экономии'
         print(json.dumps({'eco':eco,'summary':summary,'actions':items},ensure_ascii=False))

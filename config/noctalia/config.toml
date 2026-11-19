@@ -4,7 +4,7 @@
 "ui_scale" = 1.2
 
 ["bar"]
-"default" = {"background_opacity" = 0.7999999821186066, "center" = ["polish_special", "workspaces"], "concave_edge_corners" = true, "end" = ["audio_visualizer", "keyboard_layout", "tray", "screen_recording", "notifications", "network", "polish_audio", "session"], "margin_edge" = 0, "margin_ends" = 0, "radius_bottom_left" = 12, "radius_bottom_right" = 12, "radius_top_left" = 0, "radius_top_right" = 0, "scale" = 1.1, "start" = ["clock", "polish_stats", "gamermode", "system_scripts", "cat", "media", "widget", "wallpaper"], "thickness" = 35, "capsule_group" = [{"border" = "", "fill" = "on_secondary", "id" = "g1", "members" = ["temp", "sysmon_2", "sysmon_3"], "opacity" = 1.0, "padding" = 6.0}], "capsule" = true, "capsule_opacity" = 0.8799999803304672, "contact_shadow" = true, "font_weight" = 600}
+"default" = {"background_opacity" = 0.7999999821186066, "center" = ["polish_special", "workspaces"], "concave_edge_corners" = true, "end" = ["audio_visualizer", "keyboard_layout", "tray", "screen_recording", "notifications", "network", "polish_audio", "session"], "margin_edge" = 0, "margin_ends" = 0, "radius_bottom_left" = 12, "radius_bottom_right" = 12, "radius_top_left" = 0, "radius_top_right" = 0, "scale" = 1.1, "start" = ["clock", "polish_stats", "gamermode", "system_scripts", "cat", "media", "wallpaper"], "thickness" = 35, "capsule_group" = [{"border" = "", "fill" = "on_secondary", "id" = "g1", "members" = ["temp", "sysmon_2", "sysmon_3"], "opacity" = 1.0, "padding" = 6.0}], "capsule" = true, "capsule_opacity" = 0.8799999803304672, "contact_shadow" = true, "font_weight" = 600}
 
 ["shell"]
 "clipboard_image_action_command" = "swash --stdin --name \"swash-$(date +'%Y-%m-%d_%H:%M:%S').png\""
@@ -76,7 +76,7 @@
 "noctalia/wallpaper_depth" = {"auto_generate" = true, "manager_open_near_click" = true, "manager_placement" = "floating", "threshold" = 48}
 "noctalia/screen_recorder" = {"audio_bitrate" = 192, "audio_codec" = "aac", "audio_source" = "default_output", "color_range" = "limited", "directory" = "@HOME@/Videos/Recordings", "filename_pattern" = "recording_%Y%m%d_%H%M%S", "frame_rate" = 60, "frame_rate_mode" = "cfr", "replay_enabled" = false, "resolution" = "original", "show_cursor" = false, "video_bitrate_mode" = "qp", "video_codec" = "h264", "video_encoder" = "gpu", "video_qp" = 21, "video_source" = "focused"}
 "aabidk20/yt-music" = {"debug_logging" = true}
-"ch3l1k/nightlight-controls" = {"city" = "", "day_temperature" = 6500, "end_time" = "07:00", "mode" = "always", "start_time" = "22:00", "temperature" = 6400, "warmth" = "custom"}
+"ch3l1k/nightlight-controls" = {"day_temperature" = 6500, "end_time" = "07:00", "mode" = "always", "start_time" = "22:00", "temperature" = 6400, "warmth" = "custom"}
 
 ["control_center"]
 "shortcuts" = [{"type" = "wifi"}, {"type" = "bluetooth"}, {"type" = "caffeine"}, {"type" = "nightlight"}, {"type" = "notification"}, {"type" = "power_profile"}, {"type" = "yocraft/qrcode:shortcut"}]
@@ -125,11 +125,11 @@
 ["notification"]
 "follow_focused_output" = false
 "layer" = "overlay"
-"monitors" = ["DP-6"]
+"monitors" = ["MP252"]
 
 ["osd"]
 "background_opacity" = 0.7999999821186066
-"monitors" = ["DP-6"]
+"monitors" = ["MP252"]
 "offset_y" = 15
 "position" = "bottom_center"
 "kinds" = {"keyboard_layout" = false, "media" = false}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Native Noctalia recording form bridge. All processes use argv, never shell input."""
-import datetime,json,os,shutil,subprocess,sys,time,tomllib
+import json,os,shutil,subprocess,sys,tempfile,time,tomllib
 from pathlib import Path
 HOME=Path.home()
 PREF=HOME/'.config/noctalia-record-controls.json'
@@ -18,7 +18,15 @@ def call(*args,check=True):
 
 def atomic(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
-    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2));temp.replace(path)
+    with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,
+                                     prefix='.'+path.name+'.',delete=False) as stream:
+        temp=Path(stream.name)
+        try:
+            json.dump(value, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
 
 def load(path,default):
     try:return json.loads(path.read_text())
@@ -49,18 +57,17 @@ def inline(value):
     return str(value)
 
 def configure(prefs):
-    config=tomllib.loads(call('noctalia','config','export').stdout)
-    settings=config.get('plugin_settings',{})
-    before=json.dumps(settings,sort_keys=True)
-    recorder=settings.setdefault('noctalia/screen_recorder',{})
+    settings=tomllib.loads(call('noctalia','msg','config-get','plugin_settings').stdout)
+    before=settings.get('noctalia/screen_recorder',{})
+    recorder=before.copy()
     recorder.update({'video_source':prefs['source'],'frame_rate':prefs['fps'],'frame_rate_mode':'cfr',
         'video_codec':'h264','video_encoder':'gpu','video_bitrate_mode':'qp','video_qp':prefs['quality'],
         'resolution':prefs['resolution'],'audio_source':prefs['audio'],'audio_codec':'aac','audio_bitrate':192,
         'directory':str(FOLDER),'filename_pattern':'recording_%Y%m%d_%H%M%S','show_cursor':prefs['cursor'],
         'color_range':'limited','replay_enabled':False})
     FOLDER.mkdir(parents=True,exist_ok=True)
-    if json.dumps(settings,sort_keys=True)!=before:
-        call('noctalia','msg','config-set','plugin_settings',inline(settings))
+    if recorder!=before:
+        call('noctalia','msg','config-set','plugin_settings.noctalia/screen_recorder',inline(recorder))
         return True
     return False
 

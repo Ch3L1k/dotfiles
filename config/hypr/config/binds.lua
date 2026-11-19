@@ -18,7 +18,6 @@ end
 app(mainMod .. " + Q", TERMINAL, "Терминал")
 app(mainMod .. " + SHIFT + Q", "cool-retro-term", "Ретро-терминал")
 app(mainMod .. " + B", BROWSER, "Браузер")
-app(mainMod .. " + SHIFT + B", "/usr/bin/python3 @HOME@/Documents/Codex/2026-11-07/weplace-live-google-chrome-firefox-chrome/outputs/start-firefox-friend.py", "Wplace — отдельный профиль Firefox")
 app(mainMod .. " + G", "chatgpt", "ChatGPT")
 app(mainMod .. " + E", FILE_MANAGER, "Файловый менеджер")
 app(mainMod .. " + SHIFT + E", TERMINAL .. " -e yazi", "Yazi")
