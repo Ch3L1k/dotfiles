@@ -177,6 +177,14 @@ def normal_settings(monitor, eco, manual):
     return settings
 
 
+def numbered_workspaces():
+    for workspace in query("workspaces"):
+        # Hyprland also reports special and named workspaces without a numeric ID.
+        number = workspace.get("id")
+        if isinstance(number, int) and number > 0 and workspace.get("type", "normal") == "normal":
+            yield workspace
+
+
 def capture(external, internal):
     eco = session_data(runtime / "battery-eco/desktop.json")
     manual = session_data(runtime / "main-monitor-rate.json")
@@ -190,7 +198,7 @@ def capture(external, internal):
         },
         "workspaces": [
             {"id": w["id"], "name": w["name"], "monitor": w["monitor"]}
-            for w in query("workspaces") if w["id"] > 0
+            for w in numbered_workspaces()
         ],
         "focused_workspace": query("activeworkspace")["name"],
     }
@@ -238,9 +246,7 @@ def apply(target, snapshot, external_hz=60):
 
     previous = {w["name"]: w["monitor"] for w in snapshot["workspaces"]}
     moves = []
-    for workspace in query("workspaces"):
-        if workspace["id"] <= 0:
-            continue
+    for workspace in numbered_workspaces():
         name = workspace["name"]
         old_monitor = previous.get(name)
         if only_laptop:

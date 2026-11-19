@@ -44,5 +44,25 @@ class External60Tests(unittest.TestCase):
         self.assertEqual(state['monitors']['DP-8']['position'],'0x0')
         self.assertEqual(original['monitors']['DP-6']['mode'],'1920x1080@120')
 
+    def test_special_workspaces_without_numeric_ids_do_not_break_switch(self):
+        external = self.monitor() | {'x': 1920, 'y': 0, 'scale': 1, 'activeWorkspace': {'name': '2'}}
+        internal = {'name': 'eDP-1', 'x': 0, 'y': 0, 'scale': 1, 'width': 1920, 'height': 1080,
+                    'refreshRate': 60, 'activeWorkspace': {'name': '9'}}
+        numbered = {'name': '9', 'type': 'normal', 'id': 9, 'monitor': 'eDP-1'}
+        special = {'name': 'special:music', 'type': 'special', 'monitor': 'DP-8'}
+        preview = {
+            ('monitors', 'all'): [external, internal], ('monitors',): [external],
+            ('workspaces',): [numbered, special], ('activeworkspace',): {'name': '2'},
+        }
+        evaluate = []
+        with patch.dict(self.api['capture'].__globals__, query=lambda *args: preview[args],
+                        command=lambda *args: '', evaluate=evaluate.append, runtime_visuals=lambda: {},
+                        focus_workspace=lambda name: None):
+            snapshot = self.api['capture'](external, internal)
+            self.assertEqual([w['name'] for w in snapshot['workspaces']], ['9'])
+            self.assertEqual(self.api['apply']('external', snapshot, 120), 'external')
+        self.assertTrue(any('workspace=9' in call and 'DP-8' in call for call in evaluate))
+        self.assertFalse(any('special:music' in call for call in evaluate))
+
 
 if __name__=='__main__':unittest.main()
