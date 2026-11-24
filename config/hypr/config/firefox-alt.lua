@@ -16,13 +16,15 @@ local function update_guard()
 end
 local function consume() end
 -- Physical codes cover all layouts. Modifier keys themselves always pass through.
--- Existing desktop binds also match and keep executing their normal actions.
+-- Leave Alt+Shift+S to the physical shortcut registered in binds.lua.
 for code = 8, 255 do
     if not modifier_codes[code] then
         for _, mods in ipairs({ "ALT", "ALT + SHIFT", "ALT + CTRL", "ALT + CTRL + SHIFT" }) do
-            local binding = hl.bind(mods .. " + code:" .. code, consume)
-            binding:set_enabled(false)
-            guarded[#guarded + 1] = binding
+            if code ~= 39 or mods ~= "ALT + SHIFT" then
+                local binding = hl.bind(mods .. " + code:" .. code, consume)
+                binding:set_enabled(false)
+                guarded[#guarded + 1] = binding
+            end
         end
     end
 end

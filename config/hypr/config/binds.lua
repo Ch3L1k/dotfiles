@@ -120,4 +120,5 @@ end
 -- Do not pass throttled Alt+wheel events through to the focused application.
 hl.config({ binds = { scroll_event_delay = 0 } })
 
-bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd(performance .. "scripts"), "Скрипты системы")
+-- Physical S keeps this shortcut available in every configured layout.
+bind(mainMod .. " + SHIFT + code:39", hl.dsp.exec_cmd(performance .. "scripts"), "Скрипты системы")

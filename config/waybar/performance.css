@@ -57,6 +57,13 @@ window#waybar {
 }
 #workspaces button.urgent { background: @hover; color: @ink; }
 
+#workspaces button.empty {
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  box-shadow: none;
+}
+
 tooltip, menu {
   background: @bar;
   color: @ink;

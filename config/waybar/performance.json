@@ -50,8 +50,9 @@
     "on-click": "~/.local/bin/toggle-special-app btop"
   },
   "hyprland/workspaces": {
-    "active-only": true,
-    "format": "{name}",
+    "format": "{icon}",
+    "format-icons": {"empty": ""},
+    "tooltips": {"empty": ""},
     "all-outputs": false,
     "show-special": false,
     "sort-by": "number"
