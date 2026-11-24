@@ -1,0 +1,19 @@
+{
+  "positionX": "right",
+  "positionY": "top",
+  "layer": "overlay",
+  "cssPriority": "user",
+  "control-center-margin-top": 6,
+  "control-center-margin-right": 6,
+  "control-center-width": 390,
+  "notification-window-width": 390,
+  "timeout": 5,
+  "timeout-low": 3,
+  "timeout-critical": 0,
+  "transition-time": 120,
+  "widgets": ["title", "dnd", "notifications"],
+  "widget-config": {
+    "title": {"text": "Уведомления", "clear-all-button": true, "button-text": "Очистить"},
+    "dnd": {"text": "Не беспокоить"}
+  }
+}

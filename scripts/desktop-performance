@@ -1,0 +1,356 @@
+#!/usr/bin/python3
+"""Swap the Noctalia session shell for the Waybar performance setup."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import select
+import signal
+import subprocess
+import sys
+import time
+
+HOME = Path.home()
+BIN = HOME / '.local/bin'
+CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', HOME / '.config')) / 'waybar'
+LOCAL_RUNTIME = HOME / '.local/opt/desktop-performance/usr'
+SESSION_ENV = ('WAYLAND_DISPLAY', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE',
+               'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_CONFIG_HOME')
+UNIT_COMMANDS = {
+    'waybar': 'run-waybar',
+    'notifications': 'run-notifications',
+    'noctalia': 'run-noctalia',
+}
+
+
+def command(*args, check=True, timeout=12):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if check and result.returncode:
+        reason = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(reason or f'{Path(args[0]).name}: выход {result.returncode}')
+    return result
+
+
+def session_id():
+    signature = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE')
+    if not signature:
+        raise RuntimeError('Нет активной сессии Hyprland')
+    return hashlib.sha256(signature.encode()).hexdigest()[:12]
+
+
+def state_dir():
+    path = Path(os.environ['XDG_RUNTIME_DIR']) / f'desktop-performance-{session_id()}'
+    path.mkdir(mode=0o700, exist_ok=True)
+    return path
+
+
+def read_state():
+    path = state_dir() / 'state.json'
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def save(state):
+    folder = state_dir()
+    temp = folder / 'state.tmp'
+    temp.write_text(json.dumps(state) + '\n')
+    temp.replace(folder / 'state.json')
+
+
+def clear_state():
+    (state_dir() / 'state.json').unlink(missing_ok=True)
+
+
+def unit(name):
+    return f'desktop-performance-{session_id()}-{name}.service'
+
+
+def unit_active(name):
+    return command('systemctl', '--user', 'is-active', '--quiet', unit(name), check=False).returncode == 0
+
+
+def start_unit(name):
+    env = [f'--setenv={key}={os.environ[key]}' for key in SESSION_ENV if key in os.environ]
+    restart = ['--property=Restart=on-failure', '--property=RestartSec=1s'] if name != 'noctalia' else []
+    command('systemd-run', '--user', '--quiet', '--collect', f'--unit={unit(name)}',
+            '--property=Type=exec', '--property=PartOf=graphical-session.target',
+            *restart, *env, str(BIN / 'desktop-performance'), UNIT_COMMANDS[name])
+
+
+def stop_unit(name):
+    command('systemctl', '--user', 'stop', unit(name), check=False)
+    if unit_active(name):
+        raise RuntimeError(f'Не удалось остановить {unit(name)}')
+
+
+def wait_for(label, predicate):
+    deadline = time.monotonic() + 12
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.15)
+    raise RuntimeError(label)
+
+
+def profile():
+    result = command('powerprofilesctl', 'get')
+    return result.stdout.strip()
+
+
+def set_profile(value):
+    command('powerprofilesctl', 'set', value)
+    if profile() != value:
+        raise RuntimeError(f'Не применился профиль питания {value}')
+
+
+def restore_profile(state):
+    if state['profile'] != 'performance' and profile() == 'performance':
+        set_profile(state['profile'])
+
+
+def noctalia_status():
+    result = command('noctalia', 'msg', 'status', check=False, timeout=3)
+    return json.loads(result.stdout) if result.returncode == 0 else None
+
+
+def noctalia_pids():
+    signature = b'HYPRLAND_INSTANCE_SIGNATURE=' + os.environ['HYPRLAND_INSTANCE_SIGNATURE'].encode()
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            if (entry / 'comm').read_text().strip() == 'noctalia' and signature in (entry / 'environ').read_bytes().split(b'\0'):
+                yield int(entry.name)
+        except OSError:
+            continue
+
+
+def stop_noctalia():
+    pids = list(noctalia_pids())
+    if len(pids) != 1:
+        raise RuntimeError('Не удалось однозначно определить процесс Noctalia')
+    descriptor = os.pidfd_open(pids[0])
+    try:
+        signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+        if not select.select([descriptor], [], [], 8)[0]:
+            raise RuntimeError('Noctalia не завершилась')
+    finally:
+        os.close(descriptor)
+
+
+def start_noctalia():
+    if noctalia_status() is None and not unit_active('noctalia'):
+        start_unit('noctalia')
+    wait_for('Noctalia не ответила после запуска', lambda: noctalia_status() is not None)
+
+
+def owned_bus_name(name):
+    result = command('busctl', '--user', '--no-pager', 'call', 'org.freedesktop.DBus',
+                     '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner', 's',
+                     name, check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def notifications_owned():
+    owner = owned_bus_name('org.erikreider.swaync.cc')
+    return bool(owner and owner == owned_bus_name('org.freedesktop.Notifications'))
+
+
+def visible_waybar():
+    data = json.loads(command('hyprctl', '-j', 'layers').stdout)
+    return any(layer.get('namespace') == 'waybar'
+               for monitor in data.values() for group in monitor['levels'].values()
+               for layer in group)
+
+
+def package_command(name, *args):
+    installed = Path('/usr/bin') / name
+    if installed.is_file():
+        return [str(installed), *args]
+    executable = LOCAL_RUNTIME / 'bin' / name
+    if not executable.is_file():
+        raise RuntimeError(f'Отсутствует {name}')
+    return ['/usr/lib/ld-linux-x86-64.so.2', '--library-path', str(LOCAL_RUNTIME / 'lib'),
+            str(executable), *args]
+
+
+def launcher():
+    custom = HOME / '.local/opt/noctalia-ascii/start'
+    return str(custom) if os.access(custom, os.X_OK) else '/usr/bin/noctalia'
+
+
+def check_ready():
+    status = noctalia_status()
+    if status is None or status.get('locked'):
+        raise RuntimeError('Для переключения нужна запущенная и разблокированная Noctalia')
+    recorder = json.loads(command(str(BIN / 'noctalia-record-control'), 'get').stdout)
+    if recorder.get('recording') or recorder.get('pending'):
+        raise RuntimeError('Сейчас идёт запись экрана через Noctalia')
+    eco = json.loads(command(str(BIN / 'battery-eco'), 'status', '--json').stdout)
+    if eco['active'] or eco['pending']:
+        raise RuntimeError('Сначала выключи экономию батареи')
+    if 'performance' not in command('powerprofilesctl', 'list').stdout:
+        raise RuntimeError('Профиль питания performance недоступен')
+    command(*package_command('waybar', '--version'))
+    command(*package_command('swaync', '--version'))
+    command(*package_command('hyprlock', '--version'))
+    if visible_waybar():
+        raise RuntimeError('В этой сессии уже запущен Waybar')
+
+
+def restore(state):
+    stop_unit('notifications')
+    start_noctalia()
+    stop_unit('waybar')
+    restore_profile(state)
+    clear_state()
+
+
+def enable():
+    check_ready()
+    state = {'profile': profile(), 'active': False}
+    save(state)
+    try:
+        stop_noctalia()
+        start_unit('notifications')
+        wait_for('Центр уведомлений не получил D-Bus', notifications_owned)
+        start_unit('waybar')
+        wait_for('Waybar не появился в Hyprland', visible_waybar)
+        set_profile('performance')
+        state['active'] = True
+        save(state)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        try:
+            restore(state)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as recovery_error:
+            raise RuntimeError(f'{error}\nОшибка возврата Noctalia: {recovery_error}') from error
+        raise
+
+
+def toggle():
+    with (state_dir() / 'lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        previous = read_state()
+        if previous:
+            restore(previous)
+        else:
+            enable()
+
+
+def execute(*args):
+    os.execvp(args[0], args)
+
+
+def run_waybar():
+    os.environ['GTK_THEME'] = 'adw-gtk3-dark'
+    execute(*package_command('waybar', '-c', str(CONFIG / 'performance.json'),
+                             '-s', str(CONFIG / 'performance.css')))
+
+
+def run_notifications():
+    settings = json.loads((CONFIG / 'performance-notifications.json').read_text())
+    outputs = json.loads(command('hyprctl', '-j', 'monitors').stdout)
+    main = next((m for m in outputs if not m['name'].startswith('eDP')
+                 and 'MP252' in m['description']), None)
+    main = main or next((m for m in outputs if not m['name'].startswith('eDP')), None)
+    if outputs:
+        connector = (main or outputs[0])['name']
+        settings['notification-window-preferred-output'] = connector
+        settings['control-center-preferred-output'] = connector
+    path = state_dir() / 'notifications.json'
+    path.write_text(json.dumps(settings))
+    style = ['-s', str(CONFIG / 'performance-notifications.css')]
+    if not Path('/usr/bin/swaync').is_file():
+        os.environ['GSETTINGS_SCHEMA_DIR'] = str(LOCAL_RUNTIME / 'share/glib-2.0/schemas')
+        config_dirs = os.environ.get('XDG_CONFIG_DIRS') or '/etc/xdg'
+        os.environ['XDG_CONFIG_DIRS'] = f'{LOCAL_RUNTIME.parent / "etc/xdg"}:{config_dirs}'
+    execute(*package_command('swaync', '-c', str(path), *style))
+
+
+def lock_screen():
+    if noctalia_status() is not None:
+        execute('noctalia', 'msg', 'session', 'lock')
+    execute(*package_command('hyprlock', '--config', str(CONFIG / 'performance-lock.conf')))
+
+
+def calendar():
+    os.environ['GTK_THEME'] = 'adw-gtk3-dark'
+    execute('zenity', '--calendar', '--title=Календарь', '--text=', '--width=310')
+
+
+def power(action):
+    actions = {
+        'suspend': ('Перевести компьютер в сон?', ['systemctl', 'suspend']),
+        'logout': ('Выйти из сеанса?', ['uwsm', 'stop']),
+        'reboot': ('Перезагрузить компьютер?', ['systemctl', 'reboot']),
+        'shutdown': ('Выключить компьютер?', ['systemctl', 'poweroff']),
+    }
+    text, args = actions[action]
+    os.environ['GTK_THEME'] = 'adw-gtk3-dark'
+    confirmed = subprocess.run(['zenity', '--question', '--title=Питание', f'--text={text}',
+                                '--ok-label=Подтвердить', '--cancel-label=Отмена']).returncode == 0
+    if confirmed:
+        if read_state():
+            toggle()
+        execute(*args)
+
+
+def hardware(action):
+    if not read_state():
+        execute('noctalia', 'msg', *action.split())
+    fallback = {
+        'volume-up': ['wpctl', 'set-volume', '-l', '1', '@DEFAULT_AUDIO_SINK@', '3%+'],
+        'volume-down': ['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@', '3%-'],
+        'volume-mute': ['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', 'toggle'],
+        'mic-mute': ['wpctl', 'set-mute', '@DEFAULT_AUDIO_SOURCE@', 'toggle'],
+        'media toggle': ['playerctl', 'play-pause'],
+        'media next': ['playerctl', 'next'],
+        'media previous': ['playerctl', 'previous'],
+        'brightness-up': ['brightnessctl', 'set', '5%+'],
+        'brightness-down': ['brightnessctl', 'set', '5%-'],
+    }
+    args = fallback[action]
+    if args[0] == 'playerctl':
+        args = package_command(*args)
+    execute(*args)
+
+
+def main(args):
+    action, *rest = args
+    if action == 'toggle':
+        toggle()
+    elif action == 'status':
+        state = read_state()
+        print('performance' if state and state['active'] else 'restoring' if state else 'normal')
+    elif action == 'run-waybar':
+        run_waybar()
+    elif action == 'run-notifications':
+        run_notifications()
+    elif action == 'run-noctalia':
+        execute(launcher())
+    elif action == 'notify-client':
+        execute(*package_command('swaync-client', *rest))
+    elif action == 'calendar':
+        calendar()
+    elif action == 'network':
+        execute('kitty', '--class', 'performance-network', '--title', 'Сеть', '-e', 'nmtui')
+    elif action == 'lock':
+        lock_screen()
+    elif action == 'power':
+        power(rest[0])
+    elif action == 'hardware':
+        hardware(' '.join(rest))
+    else:
+        raise RuntimeError(f'Неизвестное действие: {action}')
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:] or ['toggle'])
+    except BlockingIOError:
+        sys.exit('Переключение уже выполняется')
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(error, file=sys.stderr)
+        if sys.argv[1:2] == ['toggle']:
+            command('notify-send', '-u', 'critical', 'Режим производительности', str(error), check=False)
+        sys.exit(1)

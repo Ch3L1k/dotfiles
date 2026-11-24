@@ -1,0 +1,22 @@
+@define-color background #18191c;
+@define-color chip #24262a;
+@define-color hover #35383e;
+@define-color stroke #383b42;
+@define-color ink #e9ebee;
+
+.control-center, .notification {
+  background: @chip;
+  color: @ink;
+  border: 1px solid @stroke;
+  border-radius: 0;
+}
+.control-center { background: @background; }
+.notification-content, .widget-dnd, .widget-title {
+  color: @ink;
+  font-family: Inter, "Noto Sans", sans-serif;
+}
+.control-center button, .notification button {
+  background: @chip;
+  color: @ink;
+}
+.control-center button:hover, .notification button:hover { background: @hover; }

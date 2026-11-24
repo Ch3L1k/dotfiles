@@ -1,5 +1,6 @@
 local mainMod = "ALT"
 local noctCall = "noctalia msg "
+local performance = os.getenv("HOME") .. "/.local/bin/desktop-performance "
 local launchPrefix = "uwsm app -- "
 
 local function bind(keys, action, description, flags)
@@ -78,6 +79,8 @@ bind(mainMod .. " + SHIFT + F6",
 bind(mainMod .. " + SHIFT + F7",
     hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/battery-eco toggle"),
     "Экономия батареи / восстановить производительность")
+bind(mainMod .. " + SHIFT + F9", hl.dsp.exec_cmd(performance .. "toggle"),
+    "Режим производительности / вернуть Noctalia")
 bind(mainMod .. " + Z",
     hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/obs-camera-blur toggle"),
     "Вебкамера: сильное размытие / обычное изображение")
@@ -88,7 +91,7 @@ shell(mainMod .. " + V", "panel-toggle clipboard", "История буфера 
 shell(mainMod .. " + X", "panel-toggle control-center", "Центр управления")
 shell(mainMod .. " + A", "panel-toggle control-center notifications", "Уведомления")
 shell(mainMod .. " + comma", "settings-toggle", "Настройки Noctalia")
-shell(mainMod .. " + L", "session lock", "Заблокировать экран")
+bind(mainMod .. " + L", hl.dsp.exec_cmd(performance .. "lock"), "Заблокировать экран")
 shell("CONTROL + ALT + Delete", "panel-toggle session", "Меню питания и выхода")
 shell(mainMod .. " + SHIFT + W", "panel-toggle wallpaper", "Выбор обоев")
 
@@ -110,7 +113,8 @@ local hardware = {
     { "XF86MonBrightnessDown", "brightness-down", "Темнее", true },
 }
 for _, item in ipairs(hardware) do
-    shell(item[1], item[2], item[3], { locked = true, repeating = item[4] or false })
+    bind(item[1], hl.dsp.exec_cmd(performance .. "hardware " .. item[2]),
+        item[3], { locked = true, repeating = item[4] or false })
 end
 
 -- Do not pass throttled Alt+wheel events through to the focused application.

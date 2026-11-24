@@ -1,0 +1,132 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 35,
+  "fixed-center": true,
+  "spacing": 5,
+  "modules-left": [
+    "clock",
+    "cpu",
+    "memory"
+  ],
+  "modules-center": [
+    "hyprland/workspaces"
+  ],
+  "modules-right": [
+    "custom/power",
+    "pulseaudio",
+    "network",
+    "custom/notifications",
+    "tray",
+    "hyprland/language"
+  ],
+  "clock": {
+    "format": "{:%H:%M  ·  %d.%m}",
+    "interval": 10,
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "on-scroll": 1,
+      "format": {
+        "months": "<b>{}</b>",
+        "today": "<b><u>{}</u></b>"
+      }
+    },
+    "actions": {
+      "on-scroll-up": "shift_up",
+      "on-scroll-down": "shift_down"
+    },
+    "on-click": "~/.local/bin/desktop-performance calendar"
+  },
+  "cpu": {
+    "interval": 2,
+    "format": "󰓅  {usage}%",
+    "on-click": "~/.local/bin/toggle-special-app btop"
+  },
+  "memory": {
+    "interval": 3,
+    "format": "󰍛  {used:0.1f} ГБ",
+    "tooltip-format": "{used:0.1f} / {total:0.1f} ГиБ",
+    "on-click": "~/.local/bin/toggle-special-app btop"
+  },
+  "hyprland/workspaces": {
+    "format": "{name}",
+    "all-outputs": false,
+    "show-special": false,
+    "sort-by": "number"
+  },
+  "hyprland/language": {
+    "format": "󰌌  {}",
+    "format-en": "US",
+    "format-ru": "RU",
+    "format-uk": "UA",
+    "on-click": "~/.local/bin/switch-desktop-language toggle",
+    "on-click-right": "~/.local/bin/switch-desktop-language ukrainian",
+    "tooltip": true
+  },
+  "tray": {
+    "icon-size": 16,
+    "spacing": 7
+  },
+  "custom/notifications": {
+    "exec": "~/.local/bin/desktop-performance notify-client -swb",
+    "return-type": "json",
+    "restart-interval": 3,
+    "format": "{icon}",
+    "format-icons": {
+      "none": "󰂚",
+      "notification": "󱅫",
+      "dnd-none": "󰂛",
+      "dnd-notification": "󰂛",
+      "inhibited-none": "󰂚",
+      "inhibited-notification": "󱅫",
+      "dnd-inhibited-none": "󰂛",
+      "dnd-inhibited-notification": "󰂛"
+    },
+    "on-click": "~/.local/bin/desktop-performance notify-client -t -sw",
+    "on-click-right": "~/.local/bin/desktop-performance notify-client -d -sw",
+    "exec-on-event": false,
+    "tooltip": true
+  },
+  "network": {
+    "interval": 5,
+    "format-wifi": "󰤨",
+    "format-ethernet": "󰈀",
+    "format-linked": "󰈀",
+    "format-disconnected": "󰤮",
+    "tooltip-format-wifi": "{essid} · {signalStrength}%",
+    "tooltip-format-ethernet": "{ifname} · {ipaddr}",
+    "tooltip-format-linked": "{ifname} · без IP",
+    "tooltip-format-disconnected": "Сеть отключена",
+    "on-click": "~/.local/bin/desktop-performance network"
+  },
+  "pulseaudio": {
+    "format": "{icon}  {volume}%",
+    "format-muted": "󰖁  {volume}%",
+    "format-icons": {
+      "default": [
+        "󰕿",
+        "󰖀",
+        "󰕾"
+      ]
+    },
+    "tooltip-format": "{desc}",
+    "scroll-step": 3,
+    "max-volume": 100,
+    "on-click": "pavucontrol",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+  },
+  "custom/power": {
+    "format": "󰐥",
+    "tooltip-format": "Меню питания",
+    "menu": "on-click",
+    "menu-file": "~/.config/waybar/performance-power.xml",
+    "menu-actions": {
+      "lock": "~/.local/bin/desktop-performance lock",
+      "suspend": "~/.local/bin/desktop-performance power suspend",
+      "logout": "~/.local/bin/desktop-performance power logout",
+      "reboot": "~/.local/bin/desktop-performance power reboot",
+      "shutdown": "~/.local/bin/desktop-performance power shutdown"
+    }
+  }
+}
