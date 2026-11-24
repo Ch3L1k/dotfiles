@@ -120,4 +120,4 @@ end
 -- Do not pass throttled Alt+wheel events through to the focused application.
 hl.config({ binds = { scroll_event_delay = 0 } })
 
-shell(mainMod .. " + SHIFT + S", "panel-toggle ch3l1k/system-controls:main", "Скрипты системы")
+bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd(performance .. "scripts"), "Скрипты системы")

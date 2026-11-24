@@ -45,6 +45,12 @@ local rule = hl.window_rule({
 })
 rule:set_enabled(false)
 
+hl.window_rule({
+    match = { title = "^Скрипты системы$" },
+    float = true,
+    center = true,
+})
+
 local previous
 local mode = {}
 function mode.enable()

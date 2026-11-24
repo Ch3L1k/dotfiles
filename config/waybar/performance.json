@@ -13,12 +13,12 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
-    "custom/power",
-    "pulseaudio",
-    "network",
-    "custom/notifications",
+    "hyprland/language",
     "tray",
-    "hyprland/language"
+    "custom/notifications",
+    "network",
+    "pulseaudio",
+    "custom/power"
   ],
   "clock": {
     "format": "{:%H:%M  ·  %d.%m}",
@@ -50,6 +50,7 @@
     "on-click": "~/.local/bin/toggle-special-app btop"
   },
   "hyprland/workspaces": {
+    "active-only": true,
     "format": "{name}",
     "all-outputs": false,
     "show-special": false,

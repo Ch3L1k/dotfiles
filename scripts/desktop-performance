@@ -291,6 +291,44 @@ def lock_screen():
     execute(*package_command('hyprlock', '--config', str(CONFIG / 'performance-lock.conf')))
 
 
+def scripts_menu():
+    if not read_state():
+        execute('noctalia', 'msg', 'panel-toggle', 'ch3l1k/system-controls:main')
+
+    with (state_dir() / 'scripts-menu.lock').open('w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        backend = str(BIN / 'system-controls')
+        data = json.loads(command(backend, 'status').stdout)
+        supported = {
+            'eco', 'power-status', 'main60', 'external', 'external120', 'laptop',
+            'restore', 'blur', 'btop', 'layout',
+        }
+        rows = [item for item in data['actions']
+                if item['id'] in supported and item.get('enabled', True)]
+        args = ['zenity', '--list', '--title=Скрипты системы', '--text=', '--width=555', '--height=365',
+                '--ok-label=Запустить', '--cancel-label=Закрыть', '--column=ID', '--column=Раздел',
+                '--column=Действие', '--hide-column=1', '--print-column=1']
+        for item in rows:
+            args += [item['id'], item['group'], item['title']]
+        result = subprocess.run(args, text=True, capture_output=True,
+                                env=dict(os.environ, GTK_THEME='Adwaita:dark'))
+        if result.returncode == 1:
+            return
+        if result.returncode:
+            raise RuntimeError(result.stderr.strip() or 'Не удалось открыть список скриптов')
+        selected = result.stdout.strip()
+        if selected not in {item['id'] for item in rows}:
+            return
+        if selected == 'eco' and read_state():
+            toggle()
+        output = command(backend, 'run', selected, timeout=185).stdout.strip()
+        if output:
+            command('notify-send', 'Скрипты системы', output, check=False)
+
+
 def calendar():
     os.environ['GTK_THEME'] = 'adw-gtk3-dark'
     execute('zenity', '--calendar', '--title=Календарь', '--text=', '--width=310')
@@ -348,6 +386,8 @@ def main(args):
         execute(launcher())
     elif action == 'notify-client':
         execute(*package_command('swaync-client', *rest))
+    elif action == 'scripts':
+        scripts_menu()
     elif action == 'calendar':
         calendar()
     elif action == 'network':
@@ -369,6 +409,7 @@ if __name__ == '__main__':
         sys.exit('Переключение уже выполняется')
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(error, file=sys.stderr)
-        if sys.argv[1:2] == ['toggle']:
-            command('notify-send', '-u', 'critical', 'Режим производительности', str(error), check=False)
+        if sys.argv[1:2] in (['toggle'], ['scripts']):
+            title = 'Скрипты системы' if sys.argv[1] == 'scripts' else 'Режим производительности'
+            command('notify-send', '-u', 'critical', title, str(error), check=False)
         sys.exit(1)
