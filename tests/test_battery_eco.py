@@ -31,6 +31,7 @@ class BatteryEcoTests(unittest.TestCase):
         self.enterContext(patch.dict(
             self.functions,
             command=self.unexpected_command,
+            gamer_ready=lambda: None,
             read_profile=lambda: self.profile,
             set_profile=self.set_profile,
             read_visual=self.visuals.__getitem__,
@@ -69,6 +70,45 @@ class BatteryEcoTests(unittest.TestCase):
         self.assertEqual(self.visuals, original)
         self.assertFalse(self.api['state_path']().exists())
         self.assertFalse(self.api['override_path']().exists())
+
+    def test_ultra_restores_and_never_changes_monitor_modes(self):
+        original = self.visuals.copy()
+        events = []
+        with patch.dict(self.functions, gamer_active=lambda: False,
+                        set_gamer_mode=events.append):
+            self.api['enable']('ultra')
+            self.assertEqual(self.profile, 'performance')
+            self.assertEqual(self.output['refreshRate'], 119.996)
+            self.assertEqual(self.panel['value'], 25)
+            self.assertEqual(self.visuals, self.api['VISUALS'])
+            self.assertEqual(self.api['load']()['applied']['monitors'], {})
+            self.api['reconcile']()
+            self.api['disable']()
+        self.assertEqual(events, [True, False])
+        self.assertEqual((self.profile, self.output['refreshRate'], self.panel['value']),
+                         ('balanced', 119.996, 73))
+        self.assertEqual(self.visuals, original)
+
+    def test_manual_gamer_mode_is_not_owned_by_ultra(self):
+        with patch.dict(self.functions, gamer_active=lambda: True,
+                        set_gamer_mode=self.unexpected_command):
+            self.api['enable']('ultra')
+            self.api['disable']()
+        self.assertEqual(self.profile, 'balanced')
+
+    def test_gamer_start_failure_rolls_back(self):
+        events = []
+        def fail_start(enabled):
+            events.append(enabled)
+            if enabled:
+                raise RuntimeError('gamer start')
+        with patch.dict(self.functions, gamer_active=lambda: False,
+                        set_gamer_mode=fail_start):
+            with self.assertRaisesRegex(RuntimeError, 'gamer start'):
+                self.api['enable']('ultra')
+        self.assertEqual(events, [True, False])
+        self.assertEqual((self.profile, self.panel['value']), ('balanced', 73))
+        self.assertFalse(self.api['state_path']().exists())
 
     def test_mode_selection_keeps_resolution_and_existing_lower_rate(self):
         choose = self.api['economy_mode']

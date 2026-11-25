@@ -12,6 +12,8 @@ import sys
 import time
 
 SCHEMA = 2
+PROFILES = {"economy": "power-saver", "ultra": "performance"}
+GAMER_SERVICE = "nomadcxx/gamer-mode:service"
 VISUALS = {'animations:enabled': False, 'decoration:blur:enabled': False,
            'decoration:shadow:enabled': False, 'decoration:active_opacity': 1.0,
            'decoration:inactive_opacity': 1.0}
@@ -185,10 +187,41 @@ def set_monitor(m, value):
     raise RuntimeError(f"Не подтверждена частота {m['name']}.")
 
 
-def snapshot():
+def gamer_active():
+    state = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    session_file = state / 'noctalia/plugins/data/nomadcxx/gamer-mode/session.json'
+    return session_file.is_file()
+
+
+def gamer_ready():
+    entries = command('noctalia', 'msg', 'plugins', 'list').splitlines()
+    if not any(row.startswith('nomadcxx/gamer-mode ') and row.endswith(' enabled')
+               for row in entries):
+        raise RuntimeError('В Noctalia должен быть включён плагин Gamer Mode.')
+
+
+def set_gamer_mode(enabled):
+    if not enabled and not gamer_active():
+        return
+    action = 'enable' if enabled else 'disable'
+    deadline = time.monotonic() + 20
+    while True:
+        command('noctalia', 'msg', 'plugin', GAMER_SERVICE, 'all', action)
+        # Disable may be ignored while the plugin finishes processing enable.
+        attempts = 0
+        while time.monotonic() < deadline and (enabled or attempts < 4):
+            if gamer_active() == enabled:
+                return
+            time.sleep(.15)
+            attempts += 1
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f'Gamer Mode не подтвердил {action}.')
+
+
+def snapshot(mode='economy'):
     if not session():
         raise RuntimeError('Сеанс Hyprland не найден.')
-    return {'schema': SCHEMA, 'signature': session(), 'active': False, 'phase': 'starting',
+    return {'schema': SCHEMA, 'signature': session(), 'active': False, 'phase': 'starting', 'mode': mode,
             'original': {'profile': read_profile(),
                          'brightness': {k: v['value'] for k, v in brightness_devices().items()},
                          'visuals': {k: read_visual(k) for k in VISUALS},
@@ -208,8 +241,8 @@ def load():
 
 
 def mark(state, section, key, value):
-    if section == 'profile':
-        state['applied']['profile'] = value
+    if key is None:
+        state['applied'][section] = value
     else:
         state['applied'][section][key] = value
     # Record intent before the write: a command may change its target then fail.
@@ -229,7 +262,8 @@ def write_overrides(state):
             node = node.setdefault(part, {})
         node[parts[-1]] = value
     modes = {}
-    for m in monitors():
+    outputs = monitors() if state.get('mode', 'economy') == 'economy' else []
+    for m in outputs:
         key = monitor_key(m)
         rate = economy_mode(m)
         baseline = state['original']['monitors'].get(key)
@@ -263,12 +297,14 @@ def restore(state):
             return
         # A later retry owns only unfinished fields, even if the user changes an
         # already restored setting back to the value used by economy.
-        if section == 'profile':
-            del applied['profile']
+        if key is None:
+            del applied[section]
         else:
             del applied[section][key]
         save(state)
 
+    if 'gamer_mode' in applied:
+        release('gamer_mode', None, 'Gamer Mode', lambda: set_gamer_mode(False))
     if 'profile' in applied:
         def profile():
             if read_profile() == applied['profile']:
@@ -310,6 +346,8 @@ def apply_display(state):
         if read_visual(name) != value:
             mark(state, 'visuals', name, value)
             set_visual(name, value)
+    if state.get('mode', 'economy') == 'ultra':
+        return
     for m in monitors():
         key = monitor_key(m)
         rate = economy_mode(m)
@@ -327,18 +365,24 @@ def apply_display(state):
         set_monitor(m, value)
 
 
-def enable():
+def enable(mode='economy'):
     old = load()
     if old:
         if not old['active'] or old['signature'] != session():
             raise RuntimeError('Сначала завершите восстановление обычного режима.')
+        if old.get('mode', 'economy') != mode:
+            raise RuntimeError('Сначала выключи текущий режим питания.')
         return
-    state = snapshot()
+    if mode == 'ultra':
+        gamer_ready()
+    start_gamer = mode == 'ultra' and not gamer_active()
+    state = snapshot(mode)
     save(state)
     try:
-        if state['original']['profile'] != 'power-saver':
-            mark(state, 'profile', None, 'power-saver')
-            set_profile('power-saver')
+        target_profile = PROFILES[mode]
+        if state['original']['profile'] != target_profile:
+            mark(state, 'profile', None, target_profile)
+            set_profile(target_profile)
         for name, device in brightness_devices().items():
             if name not in state['original']['brightness']:
                 continue
@@ -347,6 +391,9 @@ def enable():
                 mark(state, 'brightness', name, target)
                 set_brightness(name, target)
         apply_display(state)
+        if start_gamer:
+            mark(state, 'gamer_mode', None, True)
+            set_gamer_mode(True)
         state.update(active=True, phase='active', errors=[])
         write_overrides(state)
         save(state)
@@ -408,7 +455,7 @@ def reconcile(normal_modes=None):
     # This explicit call follows a compositor reload/display-layout transition.
     # Brightness/profile are intentionally left alone, since the user can change them.
     try:
-        if normal_modes:
+        if normal_modes and state.get('mode', 'economy') == 'economy':
             remember_layout(state, normal_modes)
         apply_display(state)
         write_overrides(state)
@@ -421,7 +468,7 @@ def reconcile(normal_modes=None):
 
 
 def status():
-    result = {'active': False, 'pending': False, 'issues': [], 'profile': None, 'cpu': {}, 'battery': [], 'monitors': []}
+    result = {'active': False, 'pending': False, 'mode': None, 'issues': [], 'profile': None, 'cpu': {}, 'battery': [], 'monitors': []}
     try:
         state = load()
     except Exception as exc:
@@ -429,6 +476,7 @@ def status():
         result['pending'] = True
         result['issues'].append(str(exc))
     if state:
+        result['mode'] = state.get('mode', 'economy')
         result['active'] = bool(state.get('active')) and state['signature'] == session()
         result['pending'] = not result['active']
         result['issues'] += state.get('errors', [])
@@ -436,7 +484,7 @@ def status():
             result['issues'].append('Сеанс Hyprland изменился; параметры старого рабочего стола не будут восстановлены.')
     try:
         result['profile'] = read_profile()
-        if result['active'] and result['profile'] != 'power-saver':
+        if result['active'] and result['profile'] != PROFILES[result['mode']]:
             result['issues'].append('Профиль питания изменён вручную.')
     except Exception as exc:
         result['issues'].append(str(exc))
@@ -481,7 +529,7 @@ def status():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['on', 'off', 'toggle', 'status', 'reconcile'], nargs='?', default='status')
+    parser.add_argument('action', choices=['on', 'off', 'toggle', 'ultra-toggle', 'status', 'reconcile'], nargs='?', default='status')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--normal-modes', type=json.loads, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -492,19 +540,24 @@ def main():
     if args.action != 'status':
         with mutation_lock():
             action = args.action
-            if action == 'toggle':
-                action = 'off' if state_path().exists() else 'on'
+            mode = 'ultra' if action == 'ultra-toggle' else 'economy'
+            if action in ('toggle', 'ultra-toggle'):
+                current = load()
+                if current and current['active'] and current.get('mode', 'economy') != mode:
+                    raise RuntimeError('Сначала выключи текущий режим питания.')
+                action = 'off' if current else 'on'
             if action == 'reconcile':
                 reconcile(args.normal_modes)
             elif action == 'on':
-                enable()
+                enable(mode)
             else:
                 disable()
     data = status()
     if args.json:
         print(json.dumps(data, ensure_ascii=False))
     else:
-        print('Экономия: ' + ('ВОССТАНОВЛЕНИЕ НЕ ЗАВЕРШЕНО' if data['pending'] else 'ВКЛ' if data['active'] else 'ВЫКЛ'))
+        label = 'Ультрапроизводительность' if data['mode'] == 'ultra' else 'Экономия'
+        print(label + ': ' + ('ВОССТАНОВЛЕНИЕ НЕ ЗАВЕРШЕНО' if data['pending'] else 'ВКЛ' if data['active'] else 'ВЫКЛ'))
         print('Профиль: ' + str(data['profile']))
         if data['cpu']:
             values = list(data['cpu'].values())

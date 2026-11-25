@@ -6,9 +6,10 @@ def run(args):
     p=subprocess.run(args,text=True,capture_output=True,timeout=180)
     if p.returncode: raise RuntimeError(p.stderr.strip() or p.stdout.strip())
     return p.stdout.strip()
-def actions(eco):
+def actions(eco, ultra):
     return [
       ('eco','Питание','battery-eco','Экономия батареи','Без пароля · профиль питания, яркость и эффекты','Выключить' if eco else 'Включить',[str(BIN/'battery-eco'),'toggle']),
+      ('ultra','Питание','device-gamepad-2','Ультрапроизводительность','Gamer Mode · профиль performance · сохраняет частоту экранов','Выключить' if ultra else 'Включить',[str(BIN/'battery-eco'),'ultra-toggle']),
       ('power-status','Питание','activity','Состояние энергосбережения','Профиль питания и состояние батареи','Проверить',[str(BIN/'battery-eco'),'status']),
       ('nightlight','Мониторы','moon-stars','Ночной цвет','Температура экрана и расписание','Настроить',['noctalia','msg','settings-open-plugin','ch3l1k/nightlight-controls']),
       ('main60','Мониторы','refresh','Основной · 60 Гц, только частота','Сохраняет включённые экраны · повторно возвращает частоту','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
@@ -24,11 +25,13 @@ def actions(eco):
     ]
 def main():
     data=json.loads(run([str(BIN/'battery-eco'),'status','--json']))
-    eco=data['active']
+    ultra=data['mode']=='ultra'
+    eco=data['active'] and not ultra
     pending=data['pending']
-    rows=actions(eco)
+    rows=actions(eco, ultra)
     if pending:
-        rows[0]=(*rows[0][:5], 'Восстановить', rows[0][-1])
+        index=1 if ultra else 0
+        rows[index]=(*rows[index][:5], 'Восстановить', rows[index][-1])
     if sys.argv[1]=='run':
         action=next((a for a in rows if a[0]==sys.argv[2]),None)
         if not action: raise RuntimeError('Неизвестное действие')
@@ -38,14 +41,17 @@ def main():
             if output: print(output)
     else:
         profile={'power-saver':'Энергосбережение','balanced':'Сбалансированный','performance':'Производительность'}.get(data['profile'],data['profile'] or 'Недоступен')
-        summary=('Нужно завершить восстановление' if pending else 'Экономия включена' if eco else 'Обычный режим')+' · '+profile
+        summary=('Нужно завершить восстановление' if pending else 'Ультрапроизводительность включена' if ultra else 'Экономия включена' if eco else 'Обычный режим')+' · '+profile
         summary+='\n'+' · '.join(f'{m["name"]}: {m["refresh"]:.0f} Гц' for m in data['monitors'])
         if data['issues']: summary+='\n'+data['issues'][0]
         items=[dict(zip(['id','group','icon','title','description','button'],a[:6])) for a in rows]
         for item in items:
+            if (item['id']=='eco' and ultra) or (item['id']=='ultra' and (eco or pending) and not ultra):
+                item['enabled']=False
+                item['description']='Сначала выключи текущий режим'
             if item['id'] in ('main60','external120') and (eco or pending):
                 item['enabled']=False
-                item['description']='Частотой сейчас управляет режим экономии'
+                item['description']='Сначала выключи текущий режим' if ultra else 'Частотой сейчас управляет режим экономии'
         print(json.dumps({'eco':eco,'summary':summary,'actions':items},ensure_ascii=False))
 if __name__=='__main__':
     try: main()
