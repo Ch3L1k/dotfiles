@@ -9,7 +9,7 @@ def run(args):
 def actions(eco, ultra):
     return [
       ('eco','Питание','battery-eco','Экономия батареи','Без пароля · профиль питания, яркость и эффекты','Выключить' if eco else 'Включить',[str(BIN/'battery-eco'),'toggle']),
-      ('ultra','Питание','device-gamepad-2','Ультрапроизводительность','Gamer Mode · профиль performance · сохраняет частоту экранов','Выключить' if ultra else 'Включить',[str(BIN/'battery-eco'),'ultra-toggle']),
+      ('ultra','Питание','device-gamepad-2','Ультрапроизводительность','Waybar · Gamer Mode · Alt + Shift + F8','Выключить' if ultra else 'Включить',[str(BIN/'desktop-performance'),'ultra-toggle']),
       ('power-status','Питание','activity','Состояние энергосбережения','Профиль питания и состояние батареи','Проверить',[str(BIN/'battery-eco'),'status']),
       ('nightlight','Мониторы','moon-stars','Ночной цвет','Температура экрана и расписание','Настроить',['noctalia','msg','settings-open-plugin','ch3l1k/nightlight-controls']),
       ('main60','Мониторы','refresh','Основной · 60 Гц, только частота','Сохраняет включённые экраны · повторно возвращает частоту','Переключить',[str(BIN/'main-monitor-rate'),'toggle']),
@@ -35,7 +35,14 @@ def main():
     if sys.argv[1]=='run':
         action=next((a for a in rows if a[0]==sys.argv[2]),None)
         if not action: raise RuntimeError('Неизвестное действие')
-        if action[-1][0]=='kitty': subprocess.Popen(action[-1],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        if action[0]=='ultra':
+            # The command must survive closing the Noctalia shell that invoked it.
+            env_keys = ('WAYLAND_DISPLAY', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE',
+                        'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME')
+            env = [f'--setenv={key}={os.environ[key]}' for key in env_keys if key in os.environ]
+            run(['systemd-run', '--user', '--quiet', '--collect', '--property=Type=exec',
+                 '--property=PartOf=graphical-session.target', *env, *action[-1]])
+        elif action[-1][0]=='kitty': subprocess.Popen(action[-1],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         else:
             output=run(action[-1])
             if output: print(output)

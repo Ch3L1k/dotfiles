@@ -211,27 +211,42 @@ def set_compositor_visuals(enabled):
         raise RuntimeError(response.stdout.strip() or 'Hyprland не подтвердил настройки оформления')
 
 
+def set_ultra_power(enabled):
+    command(str(BIN / 'battery-eco'), 'ultra-on' if enabled else 'ultra-off', timeout=60)
+
+
 def restore(state):
+    state['active'] = False
+    save(state)
     if state.get('compositor_visuals'):
         set_compositor_visuals(False)
     stop_unit('notifications')
     start_noctalia()
     stop_unit('waybar')
-    restore_profile(state)
+    if state.get('ultra'):
+        set_ultra_power(False)
+    else:
+        restore_profile(state)
     clear_state()
 
 
-def enable():
+def enable(ultra=False):
     check_ready()
-    state = {'profile': profile(), 'active': False}
+    state = {'active': False, 'ultra': ultra}
+    if not ultra:
+        state['profile'] = profile()
     save(state)
     try:
+        if ultra:
+            # The Gamer Mode service lives inside Noctalia.
+            set_ultra_power(True)
         stop_noctalia()
         start_unit('notifications')
         wait_for('Центр уведомлений не получил D-Bus', notifications_owned)
         start_unit('waybar')
         wait_for('Waybar не появился в Hyprland', visible_waybar)
-        set_profile('performance')
+        if not ultra:
+            set_profile('performance')
         state['compositor_visuals'] = True
         save(state)
         set_compositor_visuals(True)
@@ -241,18 +256,20 @@ def enable():
         try:
             restore(state)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as recovery_error:
-            raise RuntimeError(f'{error}\nОшибка возврата Noctalia: {recovery_error}') from error
+            raise RuntimeError(f'{error}\nНе удалось полностью восстановить режим: {recovery_error}') from error
         raise
 
 
-def toggle():
+def toggle(ultra=False):
     with (state_dir() / 'lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         previous = read_state()
         if previous:
             restore(previous)
+            if ultra and not previous.get('ultra'):
+                enable(ultra=True)
         else:
-            enable()
+            enable(ultra=ultra)
 
 
 def execute(*args):
@@ -303,7 +320,7 @@ def scripts_menu():
         backend = str(BIN / 'system-controls')
         data = json.loads(command(backend, 'status').stdout)
         supported = {
-            'eco', 'power-status', 'main60', 'external', 'external120', 'laptop',
+            'eco', 'ultra', 'power-status', 'main60', 'external', 'external120', 'laptop',
             'restore', 'blur', 'btop', 'layout',
         }
         rows = [item for item in data['actions']
@@ -312,7 +329,10 @@ def scripts_menu():
                 '--ok-label=Запустить', '--cancel-label=Закрыть', '--column=ID', '--column=Раздел',
                 '--column=Действие', '--hide-column=1', '--print-column=1']
         for item in rows:
-            args += [item['id'], item['group'], item['title']]
+            title = item['title']
+            if item['id'] == 'ultra':
+                title += ' · ' + item['button']
+            args += [item['id'], item['group'], title]
         result = subprocess.run(args, text=True, capture_output=True,
                                 env=dict(os.environ, GTK_THEME='Adwaita:dark'))
         if result.returncode == 1:
@@ -373,8 +393,8 @@ def hardware(action):
 
 def main(args):
     action, *rest = args
-    if action == 'toggle':
-        toggle()
+    if action in ('toggle', 'ultra-toggle'):
+        toggle(ultra=action == 'ultra-toggle')
     elif action == 'status':
         state = read_state()
         print('performance' if state and state['active'] else 'restoring' if state else 'normal')
@@ -409,7 +429,9 @@ if __name__ == '__main__':
         sys.exit('Переключение уже выполняется')
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(error, file=sys.stderr)
-        if sys.argv[1:2] in (['toggle'], ['scripts']):
-            title = 'Скрипты системы' if sys.argv[1] == 'scripts' else 'Режим производительности'
-            command('notify-send', '-u', 'critical', title, str(error), check=False)
+        titles = {'toggle': 'Режим производительности', 'ultra-toggle': 'Ультрапроизводительность',
+                  'scripts': 'Скрипты системы'}
+        action = (sys.argv[1:] or ['toggle'])[0]
+        if action in titles:
+            command('notify-send', '-u', 'critical', titles[action], str(error), check=False)
         sys.exit(1)

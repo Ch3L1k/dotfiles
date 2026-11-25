@@ -187,10 +187,38 @@ def set_monitor(m, value):
     raise RuntimeError(f"Не подтверждена частота {m['name']}.")
 
 
-def gamer_active():
+def gamer_session_file():
     state = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
-    session_file = state / 'noctalia/plugins/data/nomadcxx/gamer-mode/session.json'
-    return session_file.is_file()
+    return state / 'noctalia/plugins/data/nomadcxx/gamer-mode/session.json'
+
+
+def gamer_active():
+    return gamer_session_file().is_file()
+
+
+def wait_for_gamer_freezes():
+    # The plugin saves the snapshot before it runs its suspension commands.
+    # Confirm the configured user-process freezes before shutting down Noctalia.
+    targets = json.loads(gamer_session_file().read_text())['targets']
+    running = [target['match'] for target in targets
+               if target['kind'] == 'process' and target.get('action') == 'freeze'
+               and target['was'] == 'running']
+    deadline = time.monotonic() + 8
+    while running:
+        pending = []
+        for name in running:
+            result = subprocess.run(
+                ['pgrep', '-u', str(os.getuid()), '-r', 'R,S,D,I,W,P,K', '-x', '--', name],
+                capture_output=True, text=True, timeout=3)
+            if result.returncode == 0:
+                pending.append(name)
+            elif result.returncode != 1:
+                raise RuntimeError(result.stderr.strip() or 'Не удалось проверить процессы Gamer Mode.')
+        running = pending
+        if running:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Gamer Mode не приостановил процессы: ' + ', '.join(running))
+            time.sleep(.15)
 
 
 def gamer_ready():
@@ -342,6 +370,8 @@ def restore(state):
 
 
 def apply_display(state):
+    if state.get('desktop_visuals'):
+        return
     for name, value in VISUALS.items():
         if read_visual(name) != value:
             mark(state, 'visuals', name, value)
@@ -365,7 +395,7 @@ def apply_display(state):
         set_monitor(m, value)
 
 
-def enable(mode='economy'):
+def enable(mode='economy', desktop_visuals=False):
     old = load()
     if old:
         if not old['active'] or old['signature'] != session():
@@ -377,6 +407,8 @@ def enable(mode='economy'):
         gamer_ready()
     start_gamer = mode == 'ultra' and not gamer_active()
     state = snapshot(mode)
+    if desktop_visuals:
+        state['desktop_visuals'] = True
     save(state)
     try:
         target_profile = PROFILES[mode]
@@ -394,6 +426,8 @@ def enable(mode='economy'):
         if start_gamer:
             mark(state, 'gamer_mode', None, True)
             set_gamer_mode(True)
+        if desktop_visuals:
+            wait_for_gamer_freezes()
         state.update(active=True, phase='active', errors=[])
         write_overrides(state)
         save(state)
@@ -529,7 +563,8 @@ def status():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['on', 'off', 'toggle', 'ultra-toggle', 'status', 'reconcile'], nargs='?', default='status')
+    parser.add_argument('action', choices=['on', 'off', 'toggle', 'ultra-toggle', 'ultra-on',
+                                          'ultra-off', 'status', 'reconcile'], nargs='?', default='status')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--normal-modes', type=json.loads, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -540,16 +575,22 @@ def main():
     if args.action != 'status':
         with mutation_lock():
             action = args.action
-            mode = 'ultra' if action == 'ultra-toggle' else 'economy'
+            mode = 'ultra' if action.startswith('ultra-') else 'economy'
             if action in ('toggle', 'ultra-toggle'):
                 current = load()
-                if current and current['active'] and current.get('mode', 'economy') != mode:
+                if current and current.get('mode', 'economy') != mode:
                     raise RuntimeError('Сначала выключи текущий режим питания.')
                 action = 'off' if current else 'on'
             if action == 'reconcile':
                 reconcile(args.normal_modes)
             elif action == 'on':
                 enable(mode)
+            elif action == 'ultra-on':
+                enable('ultra', desktop_visuals=True)
+            elif action == 'ultra-off':
+                current = load()
+                if current and current.get('desktop_visuals'):
+                    restore(current)
             else:
                 disable()
     data = status()

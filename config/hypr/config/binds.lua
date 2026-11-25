@@ -26,7 +26,7 @@ app(mainMod .. " + T", "Telegram", "Telegram")
 app(mainMod .. " + D", "discord", "Discord")
 app(mainMod .. " + SHIFT + T", EDITOR, "Текстовый редактор")
 shell(mainMod .. " + F8", "plugin amirfarzamnia/autoclicker:service all toggle", "Автокликер: включить / выключить")
-shell(mainMod .. " + SHIFT + F8", "plugin amirfarzamnia/autoclicker:service all stop", "Остановить автокликер", { locked = true })
+shell("SUPER + " .. mainMod .. " + F8", "plugin amirfarzamnia/autoclicker:service all stop", "Остановить автокликер", { locked = true })
 app("XF86Calculator", CALCULATOR, "Калькулятор")
 local special_app = os.getenv("HOME") .. "/.local/bin/toggle-special-app "
 bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(special_app .. "btop"), "Показать / скрыть btop поверх окон")
@@ -79,6 +79,8 @@ bind(mainMod .. " + SHIFT + F6",
 bind(mainMod .. " + SHIFT + F7",
     hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/battery-eco toggle"),
     "Экономия батареи / восстановить производительность")
+bind(mainMod .. " + SHIFT + code:74", hl.dsp.exec_cmd(performance .. "ultra-toggle"),
+    "Ультрапроизводительность / вернуть Noctalia")
 bind(mainMod .. " + SHIFT + F9", hl.dsp.exec_cmd(performance .. "toggle"),
     "Режим производительности / вернуть Noctalia")
 bind(mainMod .. " + Z",
