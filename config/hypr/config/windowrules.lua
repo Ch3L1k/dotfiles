@@ -15,15 +15,12 @@ hl.window_rule({
 -- Gaming
 -- Proton desktop applications use app id 0; real Steam games have positive ids.
 local gamingApps = "^(steam_app_[1-9][0-9]*|gamescope)$"
-local gamingWorkspace = "name:gaming"
--- SIGame opens auxiliary windows for questions; keep them on the current desktop.
+-- SIGame uses auxiliary windows for questions; skip the generic game-window overrides there.
 local notSIGame = "negative:^(steam_app_3553500)$"
 
-hl.window_rule({ match = { content = "game", initial_class = notSIGame }, workspace = gamingWorkspace })
-hl.window_rule({ match = { xdg_tag = "^(.*game.*)$", initial_class = notSIGame }, workspace = gamingWorkspace, fullscreen_state = 2, content = "game", sync_fullscreen = true })
-hl.window_rule({ match = { class = gamingApps, initial_class = notSIGame }, workspace = gamingWorkspace })
+hl.window_rule({ match = { xdg_tag = "^(.*game.*)$", initial_class = notSIGame }, fullscreen_state = 2, content = "game", sync_fullscreen = true })
 hl.window_rule({ match = { class = "^(steam)$", title = "^(Friends List)$" }, float = true })
-hl.window_rule({ match = { class = "^(steam)$", title = "^(Launching\\.{3})$" }, float = true, center = true, workspace = gamingWorkspace })
+hl.window_rule({ match = { class = "^(steam)$", title = "^(Launching\\.{3})$" }, float = true, center = true })
 hl.window_rule({
     match = {
         class         = gamingApps,
@@ -46,7 +43,6 @@ hl.window_rule({
     float            = true,
     fullscreen       = false,
     fullscreen_state = 0,
-    workspace        = gamingWorkspace,
 })
 
 -- Apps
