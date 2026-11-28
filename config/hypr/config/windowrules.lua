@@ -13,27 +13,64 @@ hl.window_rule({
 })
 
 -- Gaming
--- Proton desktop applications use app id 0; real Steam games have positive ids.
-local gamingApps = "^(steam_app_[1-9][0-9]*|gamescope)$"
--- SIGame uses auxiliary windows for questions; skip the generic game-window overrides there.
-local notSIGame = "negative:^(steam_app_3553500)$"
-
-hl.window_rule({ match = { xdg_tag = "^(.*game.*)$", initial_class = notSIGame }, fullscreen_state = 2, content = "game", sync_fullscreen = true })
-hl.window_rule({ match = { class = "^(steam)$", title = "^(Friends List)$" }, float = true })
--- Steam's generic launch progress shares the same title for every game.
+local steamGames = "^steam_app_[1-9][0-9]*$"
+local notSIGame = "negative:^steam_app_3553500$"
 local launchWorkspace = "special:game-launch silent"
+
+-- Wayland games can identify themselves without changing their chosen window mode.
+hl.window_rule({ match = { xdg_tag = "^(.*game.*)$", initial_class = notSIGame }, content = "game" })
+hl.window_rule({ match = { class = "^(steam)$", title = "^(Friends List)$" }, float = true })
+
+-- Unknown launcher and updater windows stay accessible without stealing focus.
 hl.window_rule({
-    match = { class = "^(steam)$", title = "^(Launching\\.{3})$" },
-    workspace = launchWorkspace,
+    match = {
+        class = steamGames,
+        initial_class = notSIGame,
+        initial_title = [[(?i)^(?:.+ )?(?:launcher(?: updater)?|bootstrapper)(?::.*)?$]],
+        modal = false,
+    },
     float = true,
     center = true,
     no_initial_focus = true,
-    suppress_event = "activate activatefocus",
+    suppress_event = "activate activatefocus fullscreen",
 })
-local rdr2Class = "^steam_app_1174180$"
-local function fullscreenGame(match)
+
+local function backgroundLauncher(match)
     hl.window_rule({
         match            = match,
+        workspace        = launchWorkspace,
+        float            = true,
+        center           = true,
+        fullscreen_state = 0,
+        no_initial_focus = true,
+        suppress_event   = "activate activatefocus fullscreen",
+        render_unfocused = true,
+    })
+end
+
+-- Only the observed, automatic progress windows belong on the hidden workspace.
+backgroundLauncher({ initial_class = "^steam$", initial_title = [[^Launching\.{3}$]] })
+backgroundLauncher({
+    initial_class = "^steam_app_1174180$",
+    initial_title = "^(|Rockstar Games Launcher|Rockstar Games [–—-] (Вход|Sign [Ii]n))$",
+})
+backgroundLauncher({
+    initial_class = "^steam_app_250900$",
+    initial_title = [[^(REPENTOGON Launcher|REPENTOGON Launcher Updater(:.*)?|Copying Mod files from Steam\.{3})$]],
+})
+
+hl.window_rule({
+    match = { class = "^steam_app_[0-9]+$", initial_class = notSIGame, initial_title = "^$" },
+    center = true,
+    float = true,
+    fullscreen = false,
+    fullscreen_state = 0,
+})
+
+-- Keep the existing fullscreen behavior for the two verified game windows.
+local function fullscreenGame(class, title)
+    hl.window_rule({
+        match            = { initial_class = class, initial_title = title },
         content          = "game",
         decorate         = false,
         fullscreen_state = 2,
@@ -42,41 +79,8 @@ local function fullscreenGame(match)
     })
 end
 
-fullscreenGame({
-    class         = gamingApps,
-    title         = "^(.+)$",
-    initial_class = "negative:" .. rdr2Class,
-    initial_title = "negative:^(.*\\\\home\\\\.*)$",
-})
-fullscreenGame({ initial_class = rdr2Class, initial_title = "^Red Dead Redemption 2$" })
-
-hl.window_rule({
-    match = {
-        class         = "^(steam_app_[0-9]+)$",
-        initial_class = notSIGame,
-        initial_title = "^$",
-    },
-    center           = true,
-    float            = true,
-    fullscreen       = false,
-    fullscreen_state = 0,
-})
-
--- These RDR2 helpers run without taking focus. Keep rendering the web launcher
--- while its workspace is hidden so login and startup can finish.
-hl.window_rule({
-    match = {
-        initial_class = rdr2Class,
-        initial_title = "^(|Rockstar Games Launcher|Rockstar Games [–—-] (Вход|Sign [Ii]n))$",
-    },
-    workspace        = launchWorkspace,
-    float            = true,
-    center           = true,
-    fullscreen_state = 0,
-    no_initial_focus = true,
-    suppress_event   = "activate activatefocus fullscreen",
-    render_unfocused = true,
-})
+fullscreenGame("^steam_app_1174180$", "^Red Dead Redemption 2$")
+fullscreenGame("^steam_app_250900$", "^The Binding of Isaac(:.*)?$")
 
 -- Apps
 hl.window_rule({ match = { class = "^(Tor Browser)$" }, float = true })
@@ -192,16 +196,3 @@ hl.window_rule({ match = { class = "^(org\\.gnome\\.Nautilus)$" }, opacity = "1.
 
 -- Dedicated FL Studio window rules; keyboard bindings are unchanged.
 require("config.fl-studio-window")
-
--- Keep routine REPENTOGON startup windows out of the visible game workspace.
--- The actual Isaac window and setup/fatal-error dialogs keep their normal rules.
-hl.window_rule({
-    match = {
-        class = "^(steam_app_250900)$",
-        title = "^(REPENTOGON Launcher|REPENTOGON Launcher Updater(:.*)?|Copying Mod files from Steam\\.\\.\\.)$",
-    },
-    workspace = "special:isaac-launcher silent",
-    no_initial_focus = true,
-    suppress_event = "activate activatefocus",
-})
-
