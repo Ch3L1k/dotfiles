@@ -20,19 +20,36 @@ local notSIGame = "negative:^(steam_app_3553500)$"
 
 hl.window_rule({ match = { xdg_tag = "^(.*game.*)$", initial_class = notSIGame }, fullscreen_state = 2, content = "game", sync_fullscreen = true })
 hl.window_rule({ match = { class = "^(steam)$", title = "^(Friends List)$" }, float = true })
-hl.window_rule({ match = { class = "^(steam)$", title = "^(Launching\\.{3})$" }, float = true, center = true })
+-- Steam's generic launch progress shares the same title for every game.
+local launchWorkspace = "special:game-launch silent"
 hl.window_rule({
-    match = {
-        class         = gamingApps,
-        title         = "^(.+)$",
-        initial_title = "negative:^(.*\\\\home\\\\.*)$",
-    },
-    content          = "game",
-    decorate         = false,
-    fullscreen_state = 2,
-    size             = { "monitor_w", "monitor_h" },
-    sync_fullscreen  = true,
+    match = { class = "^(steam)$", title = "^(Launching\\.{3})$" },
+    workspace = launchWorkspace,
+    float = true,
+    center = true,
+    no_initial_focus = true,
+    suppress_event = "activate activatefocus",
 })
+local rdr2Class = "^steam_app_1174180$"
+local function fullscreenGame(match)
+    hl.window_rule({
+        match            = match,
+        content          = "game",
+        decorate         = false,
+        fullscreen_state = 2,
+        size             = { "monitor_w", "monitor_h" },
+        sync_fullscreen  = true,
+    })
+end
+
+fullscreenGame({
+    class         = gamingApps,
+    title         = "^(.+)$",
+    initial_class = "negative:" .. rdr2Class,
+    initial_title = "negative:^(.*\\\\home\\\\.*)$",
+})
+fullscreenGame({ initial_class = rdr2Class, initial_title = "^Red Dead Redemption 2$" })
+
 hl.window_rule({
     match = {
         class         = "^(steam_app_[0-9]+)$",
@@ -43,6 +60,22 @@ hl.window_rule({
     float            = true,
     fullscreen       = false,
     fullscreen_state = 0,
+})
+
+-- These RDR2 helpers run without taking focus. Keep rendering the web launcher
+-- while its workspace is hidden so login and startup can finish.
+hl.window_rule({
+    match = {
+        initial_class = rdr2Class,
+        initial_title = "^(|Rockstar Games Launcher|Rockstar Games [–—-] (Вход|Sign [Ii]n))$",
+    },
+    workspace        = launchWorkspace,
+    float            = true,
+    center           = true,
+    fullscreen_state = 0,
+    no_initial_focus = true,
+    suppress_event   = "activate activatefocus fullscreen",
+    render_unfocused = true,
 })
 
 -- Apps
